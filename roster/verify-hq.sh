@@ -68,11 +68,16 @@ fi
 # The same trap applies to rehearsing the demo: every practice run writes events,
 # so by showtime the memory callback may cite a rehearsal rather than the seeded
 # event. Reseed before the real run.
+#
+# Must go through `npm run seed`, which passes --env-file=.env.local. Calling tsx
+# directly skips the env and reseeds the LOCAL JSON file while Supabase keeps
+# every accumulated event — so the reseed appears to work and the memory checks
+# below still fail against stale rows.
 if [ "${SKIP_RESEED:-0}" != "1" ]; then
-  if npx --no-install tsx scripts/seed-events.ts >/dev/null 2>&1; then
+  if npm run --silent seed >/dev/null 2>&1; then
     ok "events reseeded to the 2 historical rows"
   else
-    printf '  \033[33m•\033[0m %s\n' "could not reseed (npm run seed) — results may be affected by earlier runs"
+    printf '  \033[33m•\033[0m %s\n' "could not reseed — results may be affected by earlier runs"
   fi
 fi
 

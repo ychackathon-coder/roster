@@ -17,7 +17,7 @@
  */
 import { z } from "zod";
 import { mockHqDecide } from "./hq-mock";
-import { askJson, modelAvailable } from "./model";
+import { askJson, lastFailure, modelAvailable } from "./model";
 import { describeAge, findMemoryMatch, recentEvents, type MemoryMatch } from "./memory";
 import {
   checkSpecificity,
@@ -212,6 +212,10 @@ export async function decideHq(input: HqRequest): Promise<HqResult> {
   }
 
   let corrective: string | undefined;
+  // Distinguishes "the network died" from "the model wrote something generic".
+  // Logging the wrong one sends whoever debugs this at 1:50 in the wrong
+  // direction entirely.
+  let bailReason: string | undefined;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await askJson<unknown>(
@@ -224,6 +228,21 @@ export async function decideHq(input: HqRequest): Promise<HqResult> {
     );
 
     if (!raw) {
+      /**
+       * Only retry failures a retry can actually fix.
+       *
+       * A timeout or transport error means the NETWORK is the problem, and
+       * retrying costs the caller another full timeout for the same outcome —
+       * measured at 16-45s per attempt against NVIDIA from this network. Bail to
+       * the floor instead, which answers instantly and still cites real detail.
+       *
+       * An empty-but-fast response is worth one more shot.
+       */
+      if (lastFailure === "timeout" || lastFailure === "transport" || lastFailure === "no_model") {
+        bailReason = `model ${lastFailure}`;
+        console.warn(`[hq] model ${lastFailure} — skipping retry, using deterministic floor`);
+        break;
+      }
       corrective = "the response was empty or not valid JSON";
       continue;
     }
@@ -271,11 +290,14 @@ export async function decideHq(input: HqRequest): Promise<HqResult> {
     };
   }
 
-  console.warn("[hq] model failed the specificity gate twice — using deterministic floor");
+  const why = bailReason ?? "failed the specificity gate twice";
+  console.warn(`[hq] ${why} — using deterministic floor`);
   return fallback("deterministic", {
     ok: false,
     matched: [],
-    findings: [{ code: "model_rejected", detail: corrective ?? "unknown" }],
+    findings: [
+      { code: bailReason ? "model_unreachable" : "model_rejected", detail: corrective ?? why },
+    ],
   });
 }
 

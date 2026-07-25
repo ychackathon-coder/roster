@@ -32,7 +32,26 @@ export function modelConfig(): ModelConfig | null {
 }
 
 export function modelAvailable(): boolean {
-  return modelConfig() !== null;
+  return modelConfig() !== null && modelEnabled();
+}
+
+/**
+ * Per-call timeout. Deliberately short.
+ *
+ * MEASURED, 2026-07-24: a 2-token completion against NVIDIA NIM from this
+ * network took 16s / 45s (timed out) / 16.9s on three consecutive attempts,
+ * while NVIDIA's own `e2e_latency_seconds` reported 0.09s. The delay is network
+ * path, not inference.
+ *
+ * So the right behavior is to give up FAST and let the deterministic floor
+ * answer: a 20ms response that cites a real commit message beats a 20-second one
+ * that says the same thing. Raise HQ_TIMEOUT_MS if the venue network is better.
+ */
+const DEFAULT_TIMEOUT_MS = Number.parseInt(process.env.HQ_TIMEOUT_MS ?? "", 10) || 8_000;
+
+/** Set HQ_MODEL_ENABLED=false to skip the model entirely and always use the floor. */
+export function modelEnabled(): boolean {
+  return !/^(0|false|no)$/i.test(process.env.HQ_MODEL_ENABLED ?? "");
 }
 
 let client: OpenAI | null = null;
@@ -41,11 +60,31 @@ let clientKey = "";
 function getClient(cfg: ModelConfig): OpenAI {
   const key = `${cfg.apiKey}|${cfg.baseURL}`;
   if (!client || clientKey !== key) {
-    client = new OpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseURL });
+    client = new OpenAI({
+      apiKey: cfg.apiKey,
+      baseURL: cfg.baseURL,
+      /**
+       * ZERO RETRIES — this is load-bearing.
+       *
+       * The SDK defaults to maxRetries: 2, so every timeout silently becomes
+       * three attempts. With an 8s timeout that is 24s per call, and HQ makes up
+       * to two calls: a 48s request behind a 30s route budget. Observed in the
+       * wild as "call failed after 37277ms" for a 12s timeout.
+       *
+       * HQ has its own retry logic that knows WHY a call failed, which is
+       * strictly better than blind retries at the transport layer.
+       */
+      maxRetries: 0,
+    });
     clientKey = key;
   }
   return client;
 }
+
+export type AskFailure = "no_model" | "timeout" | "transport" | "empty";
+
+/** Why the last ask() returned null. Lets callers skip a pointless retry. */
+export let lastFailure: AskFailure | null = null;
 
 export type AskOptions = {
   system?: string;
@@ -60,9 +99,15 @@ export async function ask(
   prompt: string,
   opts: AskOptions = {},
 ): Promise<string | null> {
-  const cfg = modelConfig();
-  if (!cfg) return null;
+  lastFailure = null;
 
+  const cfg = modelConfig();
+  if (!cfg || !modelEnabled()) {
+    lastFailure = "no_model";
+    return null;
+  }
+
+  const timeout = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const started = Date.now();
   try {
     const completion = await getClient(cfg).chat.completions.create(
@@ -80,14 +125,25 @@ export async function ask(
         max_tokens: opts.maxTokens ?? 700,
         stream: false,
       },
-      { timeout: opts.timeoutMs ?? 12_000 },
+      { timeout },
     );
     const text = completion.choices[0]?.message?.content?.trim();
-    return text || null;
+    if (!text) {
+      lastFailure = "empty";
+      return null;
+    }
+    return text;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const elapsed = Date.now() - started;
+    // A timeout means the network is the problem, so retrying will just cost the
+    // caller another full timeout. Distinguish it so HQ can skip straight to the
+    // deterministic floor.
+    lastFailure = /timed out|timeout|aborted|ETIMEDOUT|ECONNRESET/i.test(message)
+      ? "timeout"
+      : "transport";
     console.warn(
-      `[hq/model] call failed after ${Date.now() - started}ms, degrading: ${message}`,
+      `[hq/model] ${lastFailure} after ${elapsed}ms (limit ${timeout}ms), degrading: ${message}`,
     );
     return null;
   }

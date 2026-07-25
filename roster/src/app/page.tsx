@@ -147,8 +147,24 @@ export default function OnboardingPage() {
             </div>
           </dl>
           <div className="row" style={{ marginTop: "1.25rem" }}>
-            <button className="primary" onClick={() => router.push("/terminal")}>
-              Enter company terminal
+            {/*
+              Integration option A (frontend's choice): redirect into the
+              dashboard rather than embedding onboarding inside its shell.
+
+              The URL is an env var, not a constant — the dashboard runs on 3000
+              locally, 3001 when roster has taken 3000, and something else in
+              production. Falls back to the built-in /terminal mock so this page
+              still works standalone with no env configured.
+            */}
+            <button
+              className="primary"
+              onClick={() => {
+                const dashboard = process.env.NEXT_PUBLIC_DASHBOARD_URL?.replace(/\/$/, "");
+                if (dashboard) window.location.href = dashboard;
+                else router.push("/terminal");
+              }}
+            >
+              Enter company
             </button>
             <button className="ghost" onClick={() => setPhase("input")}>
               Index another repo
