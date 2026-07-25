@@ -21,3 +21,6 @@ roster/.next/
 roster/out/
 roster/data/events.json
 roster/data/active-profile.json
+
+roster/tsconfig.tsbuildinfo
+roster/.next/

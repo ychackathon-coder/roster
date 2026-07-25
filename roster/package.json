@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "seed": "tsx --env-file=.env.local scripts/seed-events.ts",
     "db:migrate": "tsx --env-file=.env.local scripts/db-migrate.ts",
-    "test:index": "tsx --env-file=.env.local scripts/test-indexing.ts"
+    "test:index": "tsx --env-file=.env.local scripts/test-indexing.ts",
+    "test": "tsx --test src/lib/*.test.ts",
+    "verify:hq": "./verify-hq.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",

@@ -21,18 +21,21 @@ function clientFromEnv(): pg.Client {
   });
 }
 
+/** Applied in order. Both are idempotent (create table if not exists). */
+const MIGRATIONS = ["supabase-events.sql", "supabase-team-profiles.sql"];
+
 async function main() {
-  const sql = readFileSync(
-    path.join(process.cwd(), "data", "supabase-events.sql"),
-    "utf8",
-  );
   const client = clientFromEnv();
   await client.connect();
   try {
-    await client.query(sql);
+    for (const file of MIGRATIONS) {
+      const sql = readFileSync(path.join(process.cwd(), "data", file), "utf8");
+      await client.query(sql);
+      console.log(`applied ${file}`);
+    }
     await client.query(`notify pgrst, 'reload schema'`);
     console.log(
-      "Migrated public.events + RLS; notified PostgREST schema reload",
+      "Migrated public.events + public.team_profiles + RLS; notified PostgREST schema reload",
     );
     console.log(
       "using",

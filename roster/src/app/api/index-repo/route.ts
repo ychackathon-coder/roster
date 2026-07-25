@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { parseRepoInput } from "@/lib/fallback-repos";
 import { indexRepo } from "@/lib/profile";
-import { saveActiveProfile } from "@/lib/session-store";
+import { setActiveProfile, profileBackend, DEFAULT_TEAM } from "@/lib/profile-store";
 import { insertEvent, listEvents } from "@/lib/events";
-import { mockHqDecide } from "@/lib/hq-mock";
+import { decideHq, toEvent } from "@/lib/hq";
+import { recentEvents } from "@/lib/memory";
 import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { repo?: string };
+    const body = (await req.json()) as { repo?: string; team?: string };
     const parsed = parseRepoInput(body.repo ?? "");
     if (!parsed) {
       return NextResponse.json(
@@ -21,30 +22,44 @@ export async function POST(req: Request) {
     }
 
     const { raw, profile } = await indexRepo(parsed.owner, parsed.name);
-    await saveActiveProfile(profile);
 
-    // First calibrated HQ line written into the shared events stream
-    const recent = await listEvents();
-    const hq = mockHqDecide({
+    // Durable now, not just a local JSON file — so employees joining later read
+    // the manager's calibration instead of an empty profile.
+    const stored = await setActiveProfile(profile, body.team ?? DEFAULT_TEAM);
+
+    /**
+     * The first calibrated HQ line, written into the shared events stream.
+     *
+     * THIS is the line the handover's hard requirement is actually about — "the
+     * very first response after onboarding must cite a specific real detail from
+     * the profile's traits." So it runs through the real engine and its
+     * specificity gate, not the mock. If the model can't cite a real detail, the
+     * deterministic floor quotes one verbatim.
+     */
+    const all = await listEvents();
+    const hq = await decideHq({
       profile,
       request: `Calibrate HQ from ${profile.source_repo}`,
       team: "HQ",
       user: "onboarding",
-      recent_events: recent,
+      recent_events: recentEvents(all),
     });
 
-    const calibrationEvent = {
+    const calibrationEvent = toEvent({
       id: randomUUID(),
       team: "HQ",
       user: "onboarding",
       request: `Calibrate from ${profile.source_repo}`,
-      decision: hq.decision,
-      sub_agent: hq.sub_agent,
-      reasoning: hq.reasoning,
-      terminal_line: hq.terminal_line,
-      timestamp: new Date().toISOString(),
-    };
-    await insertEvent(calibrationEvent);
+      hq,
+    });
+
+    let calibration_persisted = true;
+    try {
+      await insertEvent(calibrationEvent);
+    } catch (err) {
+      calibration_persisted = false;
+      console.error(`[api/index-repo] insertEvent failed: ${(err as Error).message}`);
+    }
 
     return NextResponse.json({
       profile,
@@ -58,6 +73,12 @@ export async function POST(req: Request) {
         sampleCommits: raw.commits.slice(0, 5),
       },
       calibration: calibrationEvent,
+      meta: {
+        ...hq.meta,
+        calibration_persisted,
+        profile_backend: profileBackend(),
+        profile_storage: stored.backend,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
