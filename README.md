@@ -286,3 +286,11 @@ serverless makes in-memory state incorrect rather than merely limited.
 - [ ] One API key, one owner (optional — deterministic mode works without)
 - [ ] `curl <hub>/health` from **each** laptop
 - [ ] If deployed: Redis configured, and `derive-contracts` pushed
+
+## Person D Roster (onboarding)
+
+Next.js onboarding + repo indexing lives in [`roster/`](./roster/). See `roster/DEMO_SCRIPT.md` and `roster/PROGRESS.md`.
+
+```bash
+cd roster && npm install && npm run seed && npm run dev
+```

@@ -12,3 +12,12 @@ switchboard.jsonl
 # Vercel
 .vercel/
 .npm-cache/
+
+# Person D Roster Next.js app
+roster/.env
+roster/.env.local
+roster/node_modules/
+roster/.next/
+roster/out/
+roster/data/events.json
+roster/data/active-profile.json
