@@ -82,37 +82,53 @@ async function main() {
     return;
   }
 
-  if (!process.stdin.isTTY) {
-    const chunks: Buffer[] = [];
-    for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-    const lines = Buffer.concat(chunks)
-      .toString("utf8")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-    for (const line of lines) {
-      console.log(`${name}> ${line}`);
-      await send(line);
-      console.log("");
-    }
-    return;
-  }
-
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  rl.setPrompt(`${name}> `);
-  rl.prompt();
-
-  rl.on("line", async (line) => {
-    const text = line.trim();
-    if (!text) return rl.prompt();
-    await send(text);
-    console.log("");
-    rl.prompt();
+  /**
+   * One readline loop for both a real terminal and a pipe.
+   *
+   * The earlier version buffered ALL of stdin before processing anything, which
+   * only works when input ends. Over a pipe — which is what plenty of terminal
+   * setups and IDE consoles actually give you — the process would accept a
+   * request and sit there doing nothing, looking dead while still running.
+   *
+   * Requests are also serialised through a promise chain: readline delivers lines
+   * as fast as they arrive, and two overlapping sends would interleave their
+   * output into an unreadable mess.
+   */
+  const interactive = Boolean(process.stdin.isTTY);
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: interactive,
   });
 
+  if (interactive) {
+    rl.setPrompt(`${name}> `);
+    rl.prompt();
+  }
+
+  let chain: Promise<void> = Promise.resolve();
+
+  rl.on("line", (line) => {
+    const text = line.trim();
+    if (!text) {
+      if (interactive) rl.prompt();
+      return;
+    }
+    chain = chain.then(async () => {
+      if (!interactive) console.log(`${name}> ${text}`);
+      await send(text);
+      console.log("");
+      if (interactive) rl.prompt();
+    });
+  });
+
+  // Wait for queued work before exiting, or a request sent just before stdin
+  // closed would be dropped silently.
   rl.on("close", () => {
-    console.log(dim("\nbye\n"));
-    process.exit(0);
+    void chain.then(() => {
+      if (interactive) console.log(dim("\nbye\n"));
+      process.exit(0);
+    });
   });
 }
 
