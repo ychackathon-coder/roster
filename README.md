@@ -88,24 +88,29 @@ they differ, so the board can show a badge. Nothing is ever blocked for it.
 
 See **[HOSTING.md](./HOSTING.md)** for the full comparison. Short version:
 
-| Option | Verdict |
-| --- | --- |
-| **Laptop, everyone on one LAN** | **Fastest and simplest** — ~1–5ms per edit, no setup beyond `SB_HUB`. The original §12 design |
-| **Laptop + Cloudflare Tunnel** | Same properties, reachable anywhere, ~30–150ms. Use when the venue network can't be trusted |
-| Container host (Fly / Render / Railway) | Right choice if the hub must survive the host laptop sleeping. One instance only, and contract derivation becomes manual |
-| Vercel | Works, worst fit — needs Redis, no WebSocket, lock fails open |
+| Option | Card? | Verdict |
+| --- | --- | --- |
+| **Laptop + `.local` hostname** | no | **Recommended.** ~1–5ms per edit, nothing to install, immune to the hub's IP changing. The original §12 design |
+| Phone hotspot | no | Same, for when venue wifi isolates clients from each other |
+| Tailscale | no | Free for 6 users / unlimited devices. Relays around client isolation, and removes the public-exposure problem entirely |
+| ngrok | no | Permanent `*.ngrok-free.dev` domain. 1 agent, 20K req/month |
+| Cloudflare quick tunnel | no | Rate-limited per IP; the reliable named tunnel needs a Cloudflare domain |
+| Fly / Render paid | **yes** | Only if the hub must outlive the host laptop. Contract derivation becomes manual |
+| Vercel | no | Works, worst fit — needs Redis, no WebSocket, lock fails open |
 
 ```bash
-npm start                       # everyone on one network: this is enough
-export SB_HUB=192.168.12.30     # the IP the hub prints, in each shell profile
+# hub laptop
+npm start
 
-# only if the venue network can't be trusted:
-brew install cloudflared && ./tunnel.sh
+# every other laptop — use the HOSTNAME, not the IP
+export SB_HUB=Anshs-MacBook-Air.local     # `hostname -s` on the hub, plus .local
+export SB_HUMAN=TheirName
+./lan-check.sh                            # Phase 0 gate, run on EACH laptop
 ```
 
-A tunnel is *not* faster than a container host — traffic leaves your network and
-comes back. It buys reachability while keeping in-memory state and automatic
-contract derivation.
+The IP changes when the hub rejoins wifi and silently points every teammate's
+hooks at nothing — and hooks fail *open*, so edits proceed unenforced with no
+error. The mDNS hostname follows the machine.
 
 ## Deploy to Vercel
 

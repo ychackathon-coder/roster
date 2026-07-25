@@ -6,17 +6,43 @@ is sent. Every hosting decision comes down to whether the platform allows that.
 
 ## The short answer
 
-**Run the hub on a laptop.** If everyone is on one network, point them at its LAN
-IP and you are done — that is the original §12 design and the fastest option by an
-order of magnitude. Add a Cloudflare Tunnel only if the network is unreliable or
-somebody is remote.
+**Run the hub on a laptop and address it by its `.local` hostname.** No card, no
+account, nothing to install or deploy, and the fastest option by an order of
+magnitude.
 
 ```bash
-npm start                          # terminal 1
-export SB_HUB=192.168.12.30        # everyone else — the IP the hub prints
-# …or, if the LAN can't be trusted:
-./tunnel.sh                        # terminal 2 -> public https URL
+# on the hub laptop
+npm start
+
+# on every other laptop
+export SB_HUB=Anshs-MacBook-Air.local     # use `hostname -s` on the hub, + .local
+export SB_HUMAN=TheirName
+./lan-check.sh                            # the Phase 0 gate — run it on EACH laptop
 ```
+
+Use the **hostname**, not the LAN IP. The IP changes when the hub rejoins wifi,
+which silently points every teammate's hooks at nothing — and hooks fail *open*,
+so edits proceed unenforced with no error anywhere. The mDNS name follows the
+machine. Works Mac-to-Mac out of the box; a Windows teammate needs mDNS support
+(Windows 10+ has it) and a Linux one needs `avahi`.
+
+### If the venue wifi isolates clients
+
+Many conference networks stop laptops from reaching each other. The symptom is
+identical to a down hub, which is why `lan-check.sh` exists and why it should be
+run early rather than at 0:35. If that's the situation, in order of preference:
+
+| Fallback | Card? | Notes |
+| --- | --- | --- |
+| **Phone hotspot** | no | §12 already recommends this over conference wifi. Zero setup, keeps every property above |
+| **Tailscale** | no | Free plan covers **6 users, unlimited devices** (raised April 2026). Relays around client isolation, stable addresses, and no public exposure — so §12's no-auth stops mattering |
+| **ngrok** | no | Free account, no card for HTTP. Every account gets a permanent `*.ngrok-free.dev` dev domain. Limits: 1 agent, 20K requests/month — enough for a demo, since one edit costs ~3 requests |
+| Cloudflare quick tunnel | no | Rate-limited per IP (429 / error 1015). The *reliable* named tunnel needs a domain in a Cloudflare account |
+| Fly.io / Render paid | **yes** | See [container hosts](#option-2--container-host) |
+
+Render's *free* tier needs no card but **spins down after ~15 minutes idle**, and
+since leases live in memory that means losing every lease in the room mid-session.
+Not recommended for this workload.
 
 ## Comparison
 
