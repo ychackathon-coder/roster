@@ -90,15 +90,22 @@ See **[HOSTING.md](./HOSTING.md)** for the full comparison. Short version:
 
 | Option | Verdict |
 | --- | --- |
-| **Laptop + Cloudflare Tunnel** | **Recommended.** Keeps every §12 property, ~8ms fast path, 2-minute setup, contract derivation still works |
-| Container host (Fly / Render / Railway) | Right choice if the hub must survive a laptop sleeping. One instance only |
-| Vercel | Works, worst fit — needs Redis, no WebSocket, 5–20× slower fast path |
+| **Laptop, everyone on one LAN** | **Fastest and simplest** — ~1–5ms per edit, no setup beyond `SB_HUB`. The original §12 design |
+| **Laptop + Cloudflare Tunnel** | Same properties, reachable anywhere, ~30–150ms. Use when the venue network can't be trusted |
+| Container host (Fly / Render / Railway) | Right choice if the hub must survive the host laptop sleeping. One instance only, and contract derivation becomes manual |
+| Vercel | Works, worst fit — needs Redis, no WebSocket, lock fails open |
 
 ```bash
-brew install cloudflared
-npm start        # terminal 1
-./tunnel.sh      # terminal 2  -> public https URL
+npm start                       # everyone on one network: this is enough
+export SB_HUB=192.168.12.30     # the IP the hub prints, in each shell profile
+
+# only if the venue network can't be trusted:
+brew install cloudflared && ./tunnel.sh
 ```
+
+A tunnel is *not* faster than a container host — traffic leaves your network and
+comes back. It buys reachability while keeping in-memory state and automatic
+contract derivation.
 
 ## Deploy to Vercel
 
@@ -151,7 +158,8 @@ export SB_HUB_URL=https://your-hub.vercel.app
 
 | | Local hub | Vercel |
 | --- | --- | --- |
-| Fast path latency | **~8ms** | ~40–150ms (two Redis round trips) |
+| Hub handler time | **under 1ms** | under 1ms + two Redis round trips |
+| Round trip the agent feels | ~1–5ms on a LAN | ~40–150ms |
 | Board feed | `ws://…/board` | `GET /state` polling, or `/board/sse` with reconnects |
 | Contract derivation | automatic at boot | `npm run derive-contracts` |
 | TTL expiry | timer + per-request | per-request only (no traffic → no expiry) |

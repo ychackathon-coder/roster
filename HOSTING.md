@@ -6,29 +6,37 @@ is sent. Every hosting decision comes down to whether the platform allows that.
 
 ## The short answer
 
-**Run the hub on a laptop and put a Cloudflare Tunnel in front of it.** Zero
-architecture compromise, two minutes of setup, and it removes the networking risk
-§15 rates highest.
+**Run the hub on a laptop.** If everyone is on one network, point them at its LAN
+IP and you are done — that is the original §12 design and the fastest option by an
+order of magnitude. Add a Cloudflare Tunnel only if the network is unreliable or
+somebody is remote.
 
 ```bash
-brew install cloudflared
-npm start        # terminal 1
-./tunnel.sh      # terminal 2  -> prints a public https URL
+npm start                          # terminal 1
+export SB_HUB=192.168.12.30        # everyone else — the IP the hub prints
+# …or, if the LAN can't be trusted:
+./tunnel.sh                        # terminal 2 -> public https URL
 ```
 
 ## Comparison
 
-| | Laptop + tunnel | Container host (Fly / Render / Railway) | Vercel |
-| --- | --- | --- | --- |
-| Fast path latency | **~8ms** | ~8ms | 40–150ms |
-| In-memory leases (§12) | ✅ | ✅ | ❌ needs Redis |
-| Board WebSocket | ✅ | ✅ | ❌ SSE/polling only |
-| Sweep timer | ✅ | ✅ | ❌ per-request only |
-| Slow path reliability | ✅ | ✅ | ⚠️ needs `waitUntil` |
-| Contract derivation (§8 T2) | ✅ automatic | ❌ push manually | ❌ push manually |
-| Survives your laptop sleeping | ❌ | ✅ | ✅ |
-| Setup time | **2 min** | ~10 min | ~15 min + Redis |
-| Reachable off-LAN | ✅ | ✅ | ✅ |
+| | Laptop, same LAN | Laptop + tunnel | Container host | Vercel |
+| --- | --- | --- | --- | --- |
+| Round trip per edit | **~1–5ms** | ~30–150ms | ~20–80ms | 40–150ms + 2 Redis hops |
+| In-memory leases (§12) | ✅ | ✅ | ✅ | ❌ needs Redis |
+| Board WebSocket | ✅ | ✅ | ✅ | ❌ SSE/polling only |
+| Sweep timer | ✅ | ✅ | ✅ | ❌ per-request only |
+| Slow path reliability | ✅ | ✅ | ✅ | ⚠️ needs `waitUntil` |
+| Contract derivation (§8 T2) | ✅ automatic | ✅ automatic | ❌ push manually | ❌ push manually |
+| Survives the host laptop sleeping | ❌ | ❌ | ✅ | ✅ |
+| Watch-mode iteration while building | ✅ | ✅ | ❌ redeploy | ❌ redeploy |
+| Works if the venue network is hostile | ❌ | ✅ | ✅ | ✅ |
+| Public exposure to worry about | none | yes | yes | yes |
+| Setup time | **1 min** | ~3 min | ~10 min | ~15 min + Redis |
+
+A tunnel is **not** faster than a container host — traffic leaves your network,
+reaches Cloudflare's edge, and comes back. What a tunnel buys is reachability
+without giving up in-memory state or contract derivation.
 
 Contract derivation deserves emphasis: the hub derives the contract registry by
 **reading the demo repo's files**. A laptop hub can. Any deployed hub cannot — it
