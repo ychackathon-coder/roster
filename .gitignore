@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.local
+*.log
+
+# Hub run artifacts
+switchboard.jsonl
+.claude/.switchboard-cache.json
+
+.DS_Store
