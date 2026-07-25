@@ -86,10 +86,15 @@ export async function fetchProfile(): Promise<TeamProfile | null> {
 /**
  * The event stream. Tolerates either a bare array or `{ events: [...] }` so a
  * change in the route's envelope can't blank the dashboard.
+ *
+ * Returns NULL when roster could not be reached, and [] when it answered with no
+ * events. That difference matters: an empty company should render as genuinely
+ * empty ("nobody has joined yet"), while an unreachable backend should fall back
+ * to sample data rather than claim the company is empty.
  */
-export async function fetchEvents(): Promise<RosterEvent[]> {
+export async function fetchEvents(): Promise<RosterEvent[] | null> {
   const body = await getJson<RosterEvent[] | { events?: RosterEvent[] }>("/api/events");
-  if (!body) return [];
+  if (!body) return null;
   const list = Array.isArray(body) ? body : (body.events ?? []);
   return list
     .filter((e): e is RosterEvent => Boolean(e?.id && e?.timestamp))
@@ -381,9 +386,17 @@ export type RosterSnapshot = {
   activity: ActivityItem[];
   terminal: string[];
   metrics: ReturnType<typeof eventsToMetrics>;
-  /** False when the mock data below is being shown. */
+  /**
+   * Roster answered. TRUE even with zero events — an empty company is real data.
+   * When this is false the dashboard is showing sample data because the backend
+   * could not be reached.
+   */
+  reachable: boolean;
+  /** Roster answered AND has at least one event. */
   live: boolean;
 };
+
+const EMPTY_METRICS = { activeAgents: 0, tasksCompleted: 0, interventionRate: 0, pendingApprovals: 0 };
 
 export const MOCK_SNAPSHOT: RosterSnapshot = {
   profile: null,
@@ -393,6 +406,7 @@ export const MOCK_SNAPSHOT: RosterSnapshot = {
   activity: [],
   terminal: [],
   metrics: { activeAgents: 12, tasksCompleted: 1284, interventionRate: 8, pendingApprovals: 3 },
+  reachable: false,
   live: false,
 };
 
@@ -400,9 +414,24 @@ export const MOCK_SNAPSHOT: RosterSnapshot = {
 export async function fetchSnapshot(): Promise<RosterSnapshot> {
   const [profile, events] = await Promise.all([fetchProfile(), fetchEvents()]);
 
-  // No events means roster is down OR genuinely empty before onboarding. Either
-  // way the mock keeps the dashboard looking alive.
-  if (events.length === 0) return { ...MOCK_SNAPSHOT, profile };
+  // Unreachable — keep the sample data so the dashboard doesn't look broken.
+  if (events === null) return { ...MOCK_SNAPSHOT, profile };
+
+  // Reachable but empty: the company genuinely has nobody in it yet. Render that
+  // honestly rather than inventing a workforce.
+  if (events.length === 0) {
+    return {
+      profile,
+      events: [],
+      operations: [],
+      agents: [],
+      activity: [],
+      terminal: [],
+      metrics: EMPTY_METRICS,
+      reachable: true,
+      live: false,
+    };
+  }
 
   return {
     profile,
@@ -412,6 +441,7 @@ export async function fetchSnapshot(): Promise<RosterSnapshot> {
     activity: eventsToActivity(events),
     terminal: eventsToTerminal(events),
     metrics: eventsToMetrics(events),
+    reachable: true,
     live: true,
   };
 }

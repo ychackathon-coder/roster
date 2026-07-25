@@ -84,7 +84,6 @@ import {
   type OperationStatus,
 } from "@/lib/data";
 import { useRosterData } from "@/lib/roster-context";
-import { mergeAgents } from "@/lib/roster";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
@@ -587,18 +586,31 @@ function CardHeader({
 }
 
 /**
- * Live agent state overlaid on the standing roster.
+ * The agents actually present in this company.
  *
- * The roster stays as company STRUCTURE so the hierarchy keeps its full shape;
- * live events light up the nodes they touch and idle the rest. See mergeAgents in
- * lib/roster.ts for why this merges rather than replaces.
+ * The company starts EMPTY and fills in as real work arrives — an agent appears
+ * on the hierarchy the first time HQ routes something to it. Nobody is shown
+ * before that, so what's on screen is always something that really happened.
+ *
+ * The static 18-agent roster is kept only as a fallback for when roster is
+ * unreachable, so a backend restart shows sample data rather than an empty
+ * company that looks like a bug.
  */
 function useCompanyAgents(): CompanyAgent[] {
-  const { agents, live } = useRosterData();
-  return useMemo(
-    () => (live && agents.length ? mergeAgents(companyAgents, agents) : companyAgents),
-    [agents, live],
-  );
+  const { agents, reachable } = useRosterData();
+  return useMemo(() => {
+    if (!reachable) return companyAgents;
+    return agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      initials: a.initials,
+      team: a.team as CompanyAgent["team"],
+      working: a.working,
+      task: a.task,
+      progress: a.progress,
+      elapsed: a.elapsed,
+    }));
+  }, [agents, reachable]);
 }
 
 function CompanyNetwork({
@@ -952,10 +964,10 @@ function StatusBadge({ status }: { status: OperationStatus }) {
 
 function LiveOperations({ query }: { query: string }) {
   const [filter, setFilter] = useState("All teams");
-  const { operations: liveOperations, live } = useRosterData();
-  // Live rows when roster has events; the original static rows otherwise, so the
-  // table is never empty while onboarding hasn't run.
-  const operations = live && liveOperations.length ? liveOperations : fallbackOperations;
+  const { operations: liveOperations, reachable } = useRosterData();
+  // Real rows whenever roster answered — including none at all, which is the
+  // honest state before anyone has joined. Sample rows only when unreachable.
+  const operations = reachable ? liveOperations : fallbackOperations;
   const shown = useMemo(() => {
     return operations.filter((operation) => {
       const matchesSearch = `${operation.agent} ${operation.assignment} ${operation.team}`
@@ -1166,13 +1178,14 @@ function AgentTerminal() {
   const [lines, setLines] = useState(commandResponses["/status"]);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { terminal, live, submit } = useRosterData();
+  const { terminal, reachable, submit } = useRosterData();
 
   // HQ authors terminal_line for exactly this surface, so show it verbatim.
   // Slash-commands stay local so the prototype interactions still work.
   useEffect(() => {
-    if (live && terminal.length) setLines(terminal.slice(-8));
-  }, [live, terminal]);
+    if (reachable && terminal.length) setLines(terminal.slice(-8));
+    else if (reachable) setLines(["○ No activity yet. Type a request to route it through HQ."]);
+  }, [reachable, terminal]);
 
   const runCommand = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -1460,7 +1473,7 @@ function TeamPerformanceChart() {
 }
 
 function ActivityFeed() {
-  const { activity, live } = useRosterData();
+  const { activity, reachable } = useRosterData();
 
   const staticEntries = [
     [Network, "HQ Agent delegated release review to Security Agent", "2m", "HQ"],
@@ -1471,15 +1484,15 @@ function ActivityFeed() {
   ] satisfies [LucideIcon, string, string, string][];
 
   // Icon carries the decision: a spawned agent is the one worth a second look.
-  const entries: [LucideIcon, string, string, string][] =
-    live && activity.length
-      ? activity.map((item) => [
-          item.text.startsWith("spawn") ? Lightbulb : Network,
-          `${item.agent}: ${item.text}`,
-          item.ago,
-          item.user ?? item.team,
-        ])
-      : staticEntries;
+  // Empty when roster answered with no events — nothing has happened yet.
+  const entries: [LucideIcon, string, string, string][] = reachable
+    ? activity.map((item) => [
+        item.text.startsWith("spawn") ? Lightbulb : Network,
+        `${item.agent}: ${item.text}`,
+        item.ago,
+        item.user ?? item.team,
+      ])
+    : staticEntries;
   return (
     <Card className="col-span-12 p-5 xl:col-span-5">
       <CardHeader
@@ -1490,6 +1503,11 @@ function ActivityFeed() {
       <div className="relative mt-4">
         <span className="activity-timeline" />
         <div className="space-y-3.5">
+          {entries.length === 0 && (
+            <p className="py-6 text-center text-[10px] text-muted">
+              No activity yet — the feed fills in as requests come through HQ.
+            </p>
+          )}
           {entries.map(([Icon, text, time, source]) => (
             <div key={text} className="relative flex gap-3">
               <span className="activity-icon">
@@ -2065,7 +2083,7 @@ export function Dashboard() {
   const dashboardRef = useRef<HTMLElement>(null);
   // Headline metrics derived from the real event stream; falls back to the
   // original static figures until onboarding has produced any events.
-  const { metrics, live: rosterLive, profile } = useRosterData();
+  const { metrics, reachable: rosterLive, profile } = useRosterData();
   const [activeNav, setActiveNav] = useState("Command Center");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -2263,7 +2281,7 @@ export function Dashboard() {
               />
               <MetricCard
                 title="Active AI Employees"
-                value={metrics.activeAgents ? String(metrics.activeAgents) : "18"}
+                value={rosterLive ? String(metrics.activeAgents) : "18"}
                 change="↑ 12%"
                 icon={Bot}
                 spark={sparkData[0]}
