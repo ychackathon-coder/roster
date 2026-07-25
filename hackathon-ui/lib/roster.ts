@@ -41,7 +41,18 @@ export type RosterEvent = {
 
 /* ---------------------------------- config --------------------------------- */
 
-/** Empty string means same-origin, which is what a single deployed domain wants. */
+/**
+ * Empty by default — same-origin.
+ *
+ * next.config.ts proxies /api/* to roster server-side, so the browser only ever
+ * talks to the origin it loaded from. That is what makes the dashboard work
+ * unchanged from another computer: a teammate opening 192.168.x.x:3001 has their
+ * requests forwarded by THIS server, instead of their browser trying to reach a
+ * "localhost:3456" that only exists on the host machine.
+ *
+ * Only set NEXT_PUBLIC_ROSTER_API_BASE_URL if roster is deployed on a genuinely
+ * separate domain, in which case CORS becomes your problem again.
+ */
 export const ROSTER_BASE =
   process.env.NEXT_PUBLIC_ROSTER_API_BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -242,6 +253,64 @@ export function eventsToAgents(events: RosterEvent[]): AgentNode[] {
       elapsed: elapsedSince(e.timestamp),
     };
   });
+}
+
+/**
+ * Overlay live agent state onto the dashboard's standing roster.
+ *
+ * WHY MERGE INSTEAD OF REPLACE: the hierarchy renders 18 agents across 4
+ * departments, and its continuous SVG branch paths are the centrepiece. Live data
+ * realistically has 3-5 agents, so replacing the roster outright would collapse
+ * the visual into something sparse and broken-looking — and the brief was
+ * explicitly to preserve it.
+ *
+ * So the standing roster stays as company STRUCTURE, and live events light up the
+ * nodes they touch:
+ *   - a matched agent shows its real task, progress, and elapsed time
+ *   - an unmatched agent shows idle, honestly — nothing has been routed to it
+ *   - a live agent absent from the roster is APPENDED, so a spawn_new decision
+ *     visibly grows the org chart
+ */
+export function mergeAgents<
+  T extends { id: string; name: string; initials: string; team: string; working: boolean; task: string; progress: number; elapsed: string },
+>(standing: readonly T[], live: readonly AgentNode[]): T[] {
+  const norm = (s: string) => s.toLowerCase().replace(/\s*agent\s*$/i, "").trim();
+  const liveByName = new Map(live.map((a) => [norm(a.name), a]));
+  const used = new Set<string>();
+
+  const merged = standing.map((agent) => {
+    const hit = liveByName.get(norm(agent.name));
+    if (!hit) {
+      // Idle rather than showing a fabricated task next to real ones.
+      return { ...agent, working: false, task: "Waiting for a new assignment", progress: 0, elapsed: "—" };
+    }
+    used.add(norm(agent.name));
+    return {
+      ...agent,
+      working: hit.working,
+      task: hit.task,
+      progress: hit.progress,
+      elapsed: hit.elapsed,
+    };
+  });
+
+  // Agents HQ spawned that the static roster never knew about.
+  for (const a of live) {
+    if (used.has(norm(a.name))) continue;
+    merged.push({
+      ...(standing[0] as T),
+      id: `live-${a.id}`,
+      name: a.name,
+      initials: a.initials,
+      team: a.team,
+      working: a.working,
+      task: a.task,
+      progress: a.progress,
+      elapsed: a.elapsed,
+    });
+  }
+
+  return merged;
 }
 
 export type ActivityItem = {

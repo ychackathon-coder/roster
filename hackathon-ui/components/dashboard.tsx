@@ -78,11 +78,13 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import {
-  operations,
+  operations as fallbackOperations,
   sparkData,
   teamData,
   type OperationStatus,
 } from "@/lib/data";
+import { useRosterData } from "@/lib/roster-context";
+import { mergeAgents } from "@/lib/roster";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
@@ -584,6 +586,21 @@ function CardHeader({
   );
 }
 
+/**
+ * Live agent state overlaid on the standing roster.
+ *
+ * The roster stays as company STRUCTURE so the hierarchy keeps its full shape;
+ * live events light up the nodes they touch and idle the rest. See mergeAgents in
+ * lib/roster.ts for why this merges rather than replaces.
+ */
+function useCompanyAgents(): CompanyAgent[] {
+  const { agents, live } = useRosterData();
+  return useMemo(
+    () => (live && agents.length ? mergeAgents(companyAgents, agents) : companyAgents),
+    [agents, live],
+  );
+}
+
 function CompanyNetwork({
   onOpen,
   onSelectAgent,
@@ -591,6 +608,7 @@ function CompanyNetwork({
   onOpen: () => void;
   onSelectAgent: (agent: CompanyAgent) => void;
 }) {
+  const liveAgents = useCompanyAgents();
   return (
     <div className="network-map parallax-layer" data-depth="18" aria-label="Live company organization map">
       <button
@@ -623,7 +641,7 @@ function CompanyNetwork({
         <span className="text-[8px] text-muted">Coordinating</span>
       </div>
       {companyDepartments.map((department) => {
-        const departmentAgents = companyAgents.filter(
+        const departmentAgents = liveAgents.filter(
           (agent) => agent.team === department.name,
         );
         return (
@@ -934,6 +952,10 @@ function StatusBadge({ status }: { status: OperationStatus }) {
 
 function LiveOperations({ query }: { query: string }) {
   const [filter, setFilter] = useState("All teams");
+  const { operations: liveOperations, live } = useRosterData();
+  // Live rows when roster has events; the original static rows otherwise, so the
+  // table is never empty while onboarding hasn't run.
+  const operations = live && liveOperations.length ? liveOperations : fallbackOperations;
   const shown = useMemo(() => {
     return operations.filter((operation) => {
       const matchesSearch = `${operation.agent} ${operation.assignment} ${operation.team}`
@@ -946,7 +968,9 @@ function LiveOperations({ query }: { query: string }) {
         (filter === "Blocked" && operation.status === "Blocked");
       return matchesSearch && matchesFilter;
     });
-  }, [filter, query]);
+    // `operations` must be a dependency — without it the memo keeps the first
+    // snapshot forever and the table silently stops updating on poll.
+  }, [filter, query, operations]);
 
   return (
     <Card className="col-span-12 overflow-hidden xl:col-span-8">
@@ -1140,20 +1164,44 @@ const commandResponses: Record<string, string[]> = {
 function AgentTerminal() {
   const [command, setCommand] = useState("");
   const [lines, setLines] = useState(commandResponses["/status"]);
+  const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { terminal, live, submit } = useRosterData();
 
-  const runCommand = (event?: FormEvent) => {
+  // HQ authors terminal_line for exactly this surface, so show it verbatim.
+  // Slash-commands stay local so the prototype interactions still work.
+  useEffect(() => {
+    if (live && terminal.length) setLines(terminal.slice(-8));
+  }, [live, terminal]);
+
+  const runCommand = async (event?: FormEvent) => {
     event?.preventDefault();
-    const normalized = command.trim().toLowerCase();
-    if (!normalized) return;
-    const response =
-      commandResponses[normalized] ??
-      [
-        `Analyzing: “${command.trim()}”`,
-        "I can run /status, /explain, /delegate, or /pause in this demo.",
-      ];
-    setLines([`> ${command.trim()}`, ...response]);
+    const text = command.trim();
+    if (!text || busy) return;
+
+    // Slash commands remain a local demo affordance.
+    if (text.startsWith("/")) {
+      const response =
+        commandResponses[text.toLowerCase()] ??
+        ["Unknown command.", "Try /status, /explain, /delegate, or /pause."];
+      setLines([`> ${text}`, ...response]);
+      setCommand("");
+      return;
+    }
+
+    // Anything else is a real request routed through HQ.
+    setBusy(true);
+    setLines((prev) => [...prev.slice(-6), `> ${text}`, "● routing through HQ…"]);
     setCommand("");
+    try {
+      const routed = await submit(text);
+      setLines((prev) => [
+        ...prev.filter((l) => l !== "● routing through HQ…"),
+        routed ?? "○ HQ unreachable — is roster running?",
+      ]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -1237,11 +1285,24 @@ function AgentTerminal() {
 }
 
 function CompanyBrainCard({ onOpen }: { onOpen: () => void }) {
-  const updates = [
-    ["Release policy updated", "GitHub", "Verified"],
-    ["Enterprise onboarding procedure added", "Notion", "New"],
-    ["Customer escalation rule verified", "Slack", "Verified"],
-  ];
+  const { profile } = useRosterData();
+
+  /**
+   * When a real repo has been indexed, the Company Brain shows what HQ was
+   * actually calibrated FROM — the archetype and the derived traits. This is the
+   * demo's proof point made visible: these strings are quoted from real commits
+   * and README lines, not authored copy.
+   */
+  const updates: string[][] = profile
+    ? [
+        [`Calibrated from ${profile.source_repo}`, "GitHub", "Verified"],
+        ...profile.traits.slice(0, 2).map((t) => [t, profile.source_repo, "Derived"]),
+      ]
+    : [
+        ["Release policy updated", "GitHub", "Verified"],
+        ["Enterprise onboarding procedure added", "Notion", "New"],
+        ["Customer escalation rule verified", "Slack", "Verified"],
+      ];
   return (
     <Card className="brain-field col-span-12 p-5 xl:col-span-5">
       <CardHeader
@@ -1399,13 +1460,26 @@ function TeamPerformanceChart() {
 }
 
 function ActivityFeed() {
-  const entries = [
+  const { activity, live } = useRosterData();
+
+  const staticEntries = [
     [Network, "HQ Agent delegated release review to Security Agent", "2m", "HQ"],
     [ShieldCheck, "Deployment Agent requested production approval", "8m", "GitHub"],
     [Lightbulb, "Support Agent learned a new escalation preference", "18m", "Slack"],
     [CheckCircle2, "Jordan approved the enterprise refund exception", "31m", "Human"],
     [BrainCircuit, "Company Brain verified a new deployment policy", "44m", "Notion"],
   ] satisfies [LucideIcon, string, string, string][];
+
+  // Icon carries the decision: a spawned agent is the one worth a second look.
+  const entries: [LucideIcon, string, string, string][] =
+    live && activity.length
+      ? activity.map((item) => [
+          item.text.startsWith("spawn") ? Lightbulb : Network,
+          `${item.agent}: ${item.text}`,
+          item.ago,
+          item.user ?? item.team,
+        ])
+      : staticEntries;
   return (
     <Card className="col-span-12 p-5 xl:col-span-5">
       <CardHeader
@@ -1607,6 +1681,40 @@ function AgentWorkspace({
   );
 }
 
+/**
+ * Positions for a department branch, for ANY number of agents.
+ *
+ * branchLayouts below is hand-tuned for the counts in the static roster (3, 4, 7).
+ * Once live data can add a spawned agent or idle one out, a department can hold a
+ * count with no entry — and `positions.map(...)` on undefined crashes the
+ * full-screen hierarchy outright.
+ *
+ * Hand-tuned layouts still win when they exist, so the designed look is
+ * unchanged; anything else gets a generated two-row arc that keeps branches
+ * continuous at any scale.
+ */
+function layoutFor(count: number): Array<{ x: number; y: number }> {
+  const preset = branchLayouts[count];
+  if (preset) return preset;
+  if (count <= 0) return [];
+
+  // One row up to 4, two staggered rows beyond — mirrors the 7-agent preset.
+  const perRow = count <= 4 ? count : Math.ceil(count / 2);
+  const rows = count <= 4 ? 1 : 2;
+  const out: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / perRow);
+    const inRow = i % perRow;
+    const rowCount = row === rows - 1 ? count - perRow * (rows - 1) : perRow;
+    const spread = 72 / Math.max(1, rowCount);
+    out.push({
+      x: 14 + spread * inRow + spread / 2,
+      y: rows === 1 ? 58 : row === 0 ? 40 : 82,
+    });
+  }
+  return out;
+}
+
 const branchLayouts: Record<number, Array<{ x: number; y: number }>> = {
   3: [
     { x: 18, y: 70 },
@@ -1646,6 +1754,7 @@ function FullscreenCompanyMap({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [mapZoom, setMapZoom] = useState(1);
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 20 });
+  const liveAgents = useCompanyAgents();
 
   useEffect(() => {
     if (!open) return;
@@ -1787,10 +1896,10 @@ function FullscreenCompanyMap({
                     ))}
                   </svg>
                   {companyDepartments.map((department) => {
-                    const agents = companyAgents.filter(
+                    const agents = liveAgents.filter(
                       (agent) => agent.team === department.name,
                     );
-                    const positions = branchLayouts[agents.length];
+                    const positions = layoutFor(agents.length);
                     return (
                       <section className="full-department-branch" key={department.name}>
                         <div
@@ -1954,6 +2063,9 @@ function DetailPanel({
 
 export function Dashboard() {
   const dashboardRef = useRef<HTMLElement>(null);
+  // Headline metrics derived from the real event stream; falls back to the
+  // original static figures until onboarding has produced any events.
+  const { metrics, live: rosterLive, profile } = useRosterData();
   const [activeNav, setActiveNav] = useState("Command Center");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -2151,7 +2263,7 @@ export function Dashboard() {
               />
               <MetricCard
                 title="Active AI Employees"
-                value="18"
+                value={metrics.activeAgents ? String(metrics.activeAgents) : "18"}
                 change="↑ 12%"
                 icon={Bot}
                 spark={sparkData[0]}
@@ -2159,7 +2271,7 @@ export function Dashboard() {
               />
               <MetricCard
                 title="Tasks Completed Today"
-                value="247"
+                value={rosterLive ? String(metrics.tasksCompleted) : "247"}
                 change="↑ 18%"
                 icon={CheckCircle2}
                 spark={sparkData[1]}
@@ -2167,7 +2279,7 @@ export function Dashboard() {
               />
               <MetricCard
                 title="Human Intervention Rate"
-                value="6.2%"
+                value={rosterLive ? `${metrics.interventionRate}%` : "6.2%"}
                 change="↓ 0.8pt"
                 icon={MessageSquareText}
                 spark={sparkData[2]}

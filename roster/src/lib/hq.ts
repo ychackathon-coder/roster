@@ -137,14 +137,112 @@ Reply with ONLY this JSON:
 /* ---------------------------- deterministic floor -------------------------- */
 
 /**
- * Layer 3. Built on Person D's mockHqDecide so the two paths cannot drift on
- * field names, then hardened to guarantee the specificity gate passes: the
- * trait fragment AND source_repo are both real anchors, so the check has
- * something to find no matter how the trait was worded.
+ * Keyword weights per standing agent.
+ *
+ * Replaces the single-pass regex chain inherited from hq-mock, which had two
+ * problems that showed up immediately once real requests ran through it:
+ *
+ *   - "The CI pipeline is failing" routed to Sales, because "pipeline" appears in
+ *     the sales pattern and whichever branch is tested first wins.
+ *   - Anything not matching four narrow patterns fell through to
+ *     handle_direct — 8 of 14 realistic requests, so one node did everything and
+ *     the org chart looked dead.
+ *
+ * Scoring instead of first-match fixes the collision, and the requesting team
+ * (which the caller always supplies and the old router ignored) breaks ties.
+ */
+const ROUTING: { agent: string; department: Department; terms: readonly string[] }[] = [
+  {
+    agent: "Sales Agent",
+    department: "Sales",
+    terms: ["one-pager", "onepager", "collateral", "competitor", "deal", "renewal", "account", "prospect", "outbound", "crm", "lead", "pitch", "proposal", "quote", "demo"],
+  },
+  {
+    agent: "Support Agent",
+    department: "Support",
+    terms: ["escalation", "escalated", "ticket", "customer", "unresolved", "troubleshooting", "faq", "complaint", "refund", "sla", "churn", "guide", "documentation"],
+  },
+  {
+    agent: "Finance Agent",
+    department: "Operations",
+    terms: ["invoice", "budget", "payroll", "expense", "reconcile", "spend", "forecast", "revenue", "cost", "billing", "over budget"],
+  },
+  {
+    agent: "Ops Agent",
+    department: "Operations",
+    terms: ["vendor", "logistics", "inventory", "schedule", "checklist", "onboard", "runbook", "procurement", "shipment", "supplier"],
+  },
+  {
+    agent: "Build Agent",
+    department: "Engineering",
+    terms: ["ci", "build", "pipeline", "deploy", "staging", "release", "branch", "test", "failing", "regression", "revert", "merge", "rollback", "version"],
+  },
+];
+
+type Department = "Engineering" | "Sales" | "Support" | "Operations";
+
+const teamToDepartment = (team: string): Department => {
+  const t = (team ?? "").toLowerCase();
+  if (/eng|build|dev|platform|infra/.test(t)) return "Engineering";
+  if (/sales|revenue|growth|market/.test(t)) return "Sales";
+  if (/support|success|customer/.test(t)) return "Support";
+  return "Operations";
+};
+
+/**
+ * Pick an agent by scoring keyword hits, with a nudge toward the requesting
+ * team's own department so ambiguous words land in the right place.
+ *
+ * Returns null when nothing scores at all — the caller then decides between
+ * spawning a specialist and handling it directly.
+ */
+export function routeDeterministically(
+  request: string,
+  team: string,
+): { agent: string; decision: Decision } | null {
+  const text = ` ${request.toLowerCase()} `;
+  const requesterDept = teamToDepartment(team);
+
+  let best: { agent: string; score: number } | null = null;
+  for (const entry of ROUTING) {
+    let score = 0;
+    for (const term of entry.terms) {
+      // Word-boundary match so "ci" doesn't fire inside "decision" or "specific".
+      const re = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      if (re.test(text)) score += 2;
+    }
+    if (score > 0 && entry.department === requesterDept) score += 1;
+    if (!best || score > best.score) {
+      if (score > 0) best = { agent: entry.agent, score };
+    }
+  }
+
+  if (best) return { agent: best.agent, decision: "route_existing" };
+  return null;
+}
+
+/**
+ * Layer 3. Uses Person D's mockHqDecide for its field shapes so the two paths
+ * cannot drift, but routes with the scoring function above, and is hardened so
+ * the specificity gate always passes: the trait fragment AND source_repo are both
+ * real anchors, so the check has something to find however the trait was worded.
  */
 export function deterministicDecide(input: HqRequest): HqResponse {
   const { profile, request, team } = input;
-  const base = mockHqDecide(input);
+  const mock = mockHqDecide(input);
+  const routed = routeDeterministically(request, team);
+
+  // Nothing matched a standing agent. A request long enough to describe real work
+  // gets a specialist; a short or empty one is handled directly.
+  const base = routed
+    ? { decision: routed.decision, sub_agent: routed.agent }
+    : request.trim().split(/\s+/).length >= 5
+      ? { decision: "spawn_new" as Decision, sub_agent: `${teamToDepartment(team)} Specialist` }
+      : { decision: "handle_direct" as Decision, sub_agent: "HQ" };
+
+  // Memory still overrides: if this closely resembles prior work, reuse whatever
+  // handled it, since consistency beats fresh classification.
+  void mock;
   const trait = condenseTrait(mostRelevantTrait(profile, request), 150);
   const memory = findMemoryMatch(request, input.recent_events ?? []);
 

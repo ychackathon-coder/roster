@@ -20,7 +20,7 @@ import {
   condenseTrait,
 } from "./specificity";
 import { findMemoryMatch, similarity, recentEvents, describeAge } from "./memory";
-import { deterministicDecide, decideHq, toEvent, AGENT_CATALOG } from "./hq";
+import { deterministicDecide, decideHq, toEvent, AGENT_CATALOG, routeDeterministically } from "./hq";
 import { SEEDED_EVENTS, DEMO_MEMORY_REQUEST } from "./seed-data";
 import type { TeamProfile } from "./types";
 
@@ -283,4 +283,62 @@ test("the agent catalog is non-empty and uniquely named", () => {
   const names = AGENT_CATALOG.map((a) => a.name);
   assert.ok(names.length >= 3);
   assert.equal(new Set(names).size, names.length);
+});
+
+/* ------------------------------ routing quality ---------------------------- */
+
+test("routing does not send a CI failure to Sales", () => {
+  // REGRESSION: the inherited first-match regex chain matched "pipeline" against
+  // the sales pattern, so "The CI pipeline is failing" routed to Sales Agent.
+  const r = routeDeterministically("The CI pipeline is failing on the release branch", "Engineering");
+  assert.equal(r?.agent, "Build Agent");
+});
+
+test("the requesting team breaks keyword ties", () => {
+  // "demo" is a sales term; from Engineering the engineering terms should win.
+  const eng = routeDeterministically("staging deploy before the demo", "Engineering");
+  assert.equal(eng?.agent, "Build Agent");
+  const sales = routeDeterministically("one-pager for the demo", "Sales");
+  assert.equal(sales?.agent, "Sales Agent");
+});
+
+test("realistic requests route to sensible agents, not all to HQ", () => {
+  // The whole point: 8 of 14 realistic requests previously fell through to
+  // handle_direct, leaving one node doing everything and a dead org chart.
+  const cases: [string, string, string][] = [
+    ["Escalation from Northwind is still unresolved after two days", "Support", "Support Agent"],
+    ["Reconcile the invoice exceptions from last month", "Operations", "Finance Agent"],
+    ["Onboard the new logistics vendor and share the checklist", "Operations", "Ops Agent"],
+    ["Refresh the enterprise one-pager before the demo", "Sales", "Sales Agent"],
+    ["Review the staging deploy before we promote it", "Engineering", "Build Agent"],
+    ["Check whether we are over budget on cloud spend", "Operations", "Finance Agent"],
+  ];
+  for (const [request, team, expected] of cases) {
+    const r = routeDeterministically(request, team);
+    assert.equal(r?.agent, expected, `"${request}" -> ${r?.agent ?? "null"}, expected ${expected}`);
+  }
+});
+
+test("an unfamiliar surface spawns a specialist instead of defaulting to HQ", () => {
+  const out = deterministicDecide({
+    profile: PROFILE,
+    request: "We need a trademark filing reviewed before the launch announcement",
+    team: "Operations",
+    user: null,
+    recent_events: [],
+  });
+  assert.equal(out.decision, "spawn_new");
+  assert.match(out.sub_agent, /Specialist/);
+});
+
+test("a trivially short request is handled directly", () => {
+  const out = deterministicDecide({
+    profile: PROFILE,
+    request: "status",
+    team: "Sales",
+    user: null,
+    recent_events: [],
+  });
+  assert.equal(out.decision, "handle_direct");
+  assert.equal(out.sub_agent, "HQ");
 });
