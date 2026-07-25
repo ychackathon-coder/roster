@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+*.log
+data/events.json
+data/active-profile.json
+.DS_Store

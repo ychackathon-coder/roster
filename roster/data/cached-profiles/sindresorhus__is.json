@@ -1,0 +1,36 @@
+{
+  "repo": "sindresorhus/is",
+  "profile": {
+    "archetype": "TypeScript-focused type checking",
+    "summary": "This team builds and maintains a type checking library with extensive use of type guards and support for type assertions, actively maintained with a focus on user-friendliness.",
+    "traits": [
+      "Written in TypeScript",
+      "Extensive use of type guards as seen in the README",
+      "Supports type assertions with examples in the README",
+      "Actively maintained with recent commits like 'Fix CI' and 'Add negative assertion helper'",
+      "Primary language is TypeScript with topics including 'type-check' and 'typescript'"
+    ],
+    "directive": "HQ should route tasks related to type checking and TypeScript to this team with a moderate spawn eagerness to ensure timely handling of type-related issues and updates.",
+    "source_repo": "sindresorhus/is"
+  },
+  "rawSnippet": [
+    {
+      "sha": "7821031",
+      "message": "Fix CI",
+      "author": "sindresorhus",
+      "date": "2026-05-11T13:57:22Z"
+    },
+    {
+      "sha": "a439305",
+      "message": "8.1.0",
+      "author": "sindresorhus",
+      "date": "2026-05-11T11:22:19Z"
+    },
+    {
+      "sha": "2d4956e",
+      "message": "Add negative assertion helper",
+      "author": "sindresorhus",
+      "date": "2026-05-10T06:01:37Z"
+    }
+  ]
+}

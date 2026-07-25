@@ -1,0 +1,254 @@
+:root {
+  --bg: #0f1410;
+  --bg-elev: #182019;
+  --ink: #e8f0e6;
+  --muted: #8fa093;
+  --line: #2a382c;
+  --accent: #c4f542;
+  --accent-ink: #14200a;
+  --warn: #f0c674;
+  --danger: #ff6b6b;
+  --card: #1c261e;
+  --mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #1d3320 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #243018 0%, transparent 50%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.brand {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.75rem;
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.1;
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+}
+
+.lede {
+  color: var(--muted);
+  max-width: 38rem;
+  line-height: 1.5;
+  margin: 0 0 2rem;
+}
+
+.panel {
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+input[type="text"] {
+  flex: 1;
+  min-width: 220px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 8px;
+  padding: 0.85rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.card {
+  text-align: left;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.card:hover {
+  border-color: var(--accent);
+}
+
+.card strong {
+  display: block;
+  font-family: var(--mono);
+  margin-bottom: 0.35rem;
+}
+
+.card span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 2rem 0;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.profile-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.profile-grid dt {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+
+.profile-grid dd {
+  margin: 0.2rem 0 0;
+  line-height: 1.45;
+}
+
+.traits {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--ink);
+}
+
+.traits li {
+  margin-bottom: 0.35rem;
+}
+
+.error {
+  color: var(--danger);
+  margin-top: 1rem;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+
+.terminal {
+  background: #0a0e0b;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  min-height: 280px;
+  max-height: 520px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.terminal .meta {
+  color: var(--muted);
+}
+
+.terminal .line {
+  margin: 0.35rem 0;
+}
+
+.terminal .accent {
+  color: var(--accent);
+}
+
+.nav {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+.nav a {
+  color: var(--muted);
+  border-bottom: 1px solid transparent;
+}
+
+.nav a:hover,
+.nav a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
