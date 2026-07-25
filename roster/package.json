@@ -12,7 +12,9 @@
     "test:index": "tsx --env-file=.env.local scripts/test-indexing.ts",
     "test": "tsx --test src/lib/*.test.ts",
     "verify:hq": "./verify-hq.sh",
-    "seed:demo": "tsx --env-file=.env.local scripts/seed-demo.ts"
+    "seed:demo": "tsx --env-file=.env.local scripts/seed-demo.ts",
+    "as": "tsx --env-file=.env.local scripts/as.ts",
+    "watch": "tsx --env-file=.env.local scripts/watch.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",
