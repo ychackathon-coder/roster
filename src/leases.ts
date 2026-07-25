@@ -12,7 +12,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { config } from './config.js'
-import { anyPathOverlaps, normalize } from './overlap.js'
+import { anyPathOverlaps, normalize, relativize } from './overlap.js'
 import { logActivity } from './state.js'
 import { denialMessage, sequencingMessage } from './strings.js'
 import type { HubState, ScopeLease, Session, Task } from './types.js'
@@ -85,7 +85,7 @@ export const unassignedOpenTasks = (s: HubState): string[] =>
 
 export const createLease = (
   s: HubState,
-  a: { session: Session; path: string; status?: ScopeLease['status'] },
+  a: { session: Session; path: string; status?: ScopeLease['status']; cwd?: string },
 ): ScopeLease => {
   const now = Date.now()
   const task = taskFor(s, a.session)
@@ -94,7 +94,9 @@ export const createLease = (
     sessionId: a.session.id,
     humanId: a.session.humanId,
     taskId: task?.id ?? null,
-    paths: [normalize(a.path)],
+    // Repo-relative, ALWAYS — see relativize() in overlap.ts. Storing the raw
+    // absolute path is what makes cross-machine collisions invisible.
+    paths: [relativize(a.path, a.cwd)],
     status: a.status ?? 'held',
     grantedAt: now,
     expiresAt: now + config.leaseTtlMs,
@@ -106,10 +108,10 @@ export const createLease = (
 }
 
 /** Same session touching a path it already holds: extend, don't duplicate. */
-export const refreshLease = (lease: ScopeLease, path: string): void => {
+export const refreshLease = (lease: ScopeLease, path: string, cwd?: string): void => {
   lease.expiresAt = Date.now() + config.leaseTtlMs
   lease.editCount += 1
-  const p = normalize(path)
+  const p = relativize(path, cwd)
   if (!lease.paths.includes(p)) lease.paths.push(p)
 }
 
@@ -122,7 +124,7 @@ export const refreshLease = (lease: ScopeLease, path: string): void => {
  */
 export const evaluateEdit = (
   s: HubState,
-  a: { sessionId: string; path: string },
+  a: { sessionId: string; path: string; cwd?: string },
 ): EditDecision => {
   const session = s.sessions[a.sessionId]
 
@@ -135,22 +137,26 @@ export const evaluateEdit = (
   session.lastSeen = Date.now()
   session.status = 'active'
 
+  // Reconcile to repo-relative BEFORE any comparison. Every stored lease path is
+  // repo-relative, so a raw absolute path here would match nothing.
+  const rel = relativize(a.path, a.cwd)
+
   // Step 4 first: the common case on a multi-edit turn is the same session
   // touching a file it already holds. Checking it before the blocking scan
   // keeps the hot path short.
-  const own = findOwnLease(s, a.path, a.sessionId)
+  const own = findOwnLease(s, rel, a.sessionId)
   if (own) {
-    refreshLease(own, a.path)
+    refreshLease(own, rel)
     return { kind: 'allow', leaseId: own.id, created: false }
   }
 
   // Step 2.
-  const blocking = findBlockingLease(s, a.path, a.sessionId)
+  const blocking = findBlockingLease(s, rel, a.sessionId)
 
   // Step 3.
   if (!blocking) {
-    const lease = createLease(s, { session, path: a.path })
-    logActivity(s, `${session.humanName} took ${normalize(a.path)}`, 'info', session.id)
+    const lease = createLease(s, { session, path: rel })
+    logActivity(s, `${session.humanName} took ${rel}`, 'info', session.id)
     return { kind: 'allow', leaseId: lease.id, created: true }
   }
 
@@ -161,21 +167,21 @@ export const evaluateEdit = (
   if (isCoupled(s, session, holder)) {
     const blockingTask = blocking.taskId ? s.tasks[blocking.taskId] : null
     const reason = sequencingMessage({
-      path: normalize(a.path),
+      path: rel,
       blockingTaskId: blockingTask?.id ?? 'the blocking task',
       blockingTaskTitle: blockingTask?.title ?? blocking.intent,
       holderName,
     })
     // Record the wait so releasing the blocker can notify this session. §7's
     // 'deferred' status exists for exactly this.
-    createLease(s, { session, path: a.path, status: 'deferred' })
-    logActivity(s, `${session.humanName} deferred on ${normalize(a.path)} behind ${holderName}`, 'warn', session.id)
+    createLease(s, { session, path: rel, status: 'deferred' })
+    logActivity(s, `${session.humanName} deferred on ${rel} behind ${holderName}`, 'warn', session.id)
     return { kind: 'defer', reason, blockingLease: blocking }
   }
 
   // Step 6 — independent work colliding on one file.
   const reason = denialMessage({
-    path: normalize(a.path),
+    path: rel,
     holderName,
     machine: holder?.machine ?? 'another machine',
     expiresAt: blocking.expiresAt,
@@ -183,7 +189,7 @@ export const evaluateEdit = (
     freePaths: freePathsForSession(s, session),
     openTasks: unassignedOpenTasks(s),
   })
-  logActivity(s, `${session.humanName} denied on ${normalize(a.path)} — held by ${holderName}`, 'block', session.id)
+  logActivity(s, `${session.humanName} denied on ${rel} — held by ${holderName}`, 'block', session.id)
   return { kind: 'deny', reason, blockingLease: blocking }
 }
 

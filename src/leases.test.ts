@@ -53,6 +53,38 @@ test('T-03 and T-04 racing CartItem.tsx produces a denial', () => {
   assert.match(d.reason, /Unassigned open tasks: /)
 })
 
+test('two DIFFERENT machines collide on the same repo-relative file', () => {
+  // REGRESSION: the original build stored raw absolute paths, so Maya's
+  // /Users/maya/demo/... and Sam's /Users/sam/work/... never overlapped. Every
+  // lease was granted and the §14 collision beat silently did nothing. This is
+  // the real runtime shape — both sides absolute, different prefixes.
+  const s = makeState()
+  seedDemoTasks(s)
+  joinSession(s, { id: 's1', name: 'Maya', machine: 'maya-mbp', taskId: 'T-04', intent: 'quantity stepper' })
+  joinSession(s, { id: 's2', name: 'Sam', machine: 'sam-air', taskId: 'T-03' })
+
+  const first = evaluateEdit(s, {
+    sessionId: 's1',
+    path: `/Users/maya/demo/${CART_ITEM}`,
+    cwd: '/Users/maya/demo',
+  })
+  assert.equal(first.kind, 'allow')
+  // The stored path must be repo-relative, not machine-specific.
+  assert.deepEqual(heldLeases(s)[0]!.paths, [CART_ITEM])
+
+  const second = evaluateEdit(s, {
+    sessionId: 's2',
+    path: `/Users/sam/work/switchboard/${CART_ITEM}`,
+    cwd: '/Users/sam/work/switchboard',
+  })
+  assert.equal(second.kind, 'deny', 'cross-machine collision must be denied')
+  if (second.kind !== 'deny') return
+  assert.match(second.reason, /leased by Maya's session on maya-mbp/)
+  // And the denial names the file in repo-relative terms, which is what the
+  // other person would recognize.
+  assert.match(second.reason, /web\/src\/components\/Cart\/CartItem\.tsx is leased/)
+})
+
 test('same session touching its own path refreshes rather than duplicating', () => {
   // §3 step 4. A multi-edit turn must not create N leases.
   const s = makeState()

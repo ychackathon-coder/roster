@@ -46,9 +46,22 @@ const rank = (n: Notice): number => (n.severity === 'block' ? 0 : KIND_RANK[n.ki
 const byPriorityThenRecency = (a: Notice, b: Notice): number =>
   rank(a) - rank(b) || b.at - a.at
 
-/** §6.2 mechanism 3. Undefined fields collapse to a stable placeholder. */
-const dedupeKey = (n: NoticeDraft | Notice): string =>
-  `${n.kind}|${n.relatedSessionId ?? '-'}|${n.contractName ?? '-'}`
+/**
+ * §6.2 mechanism 3: dedupe by (kind, relatedSessionId, contractName).
+ *
+ * When a notice carries NEITHER a related session nor a contract name there is
+ * no dimension to dedupe on, and keying on kind alone would collapse every
+ * unrelated `info` into one — silently swallowing distinct messages, which is
+ * the §15 risk-6 failure this file exists to prevent. Those fall back to
+ * message identity, so exact repeats still collapse and different notices both
+ * survive.
+ */
+const dedupeKey = (n: NoticeDraft | Notice): string => {
+  const dimensioned = n.relatedSessionId !== undefined || n.contractName !== undefined
+  return dimensioned
+    ? `${n.kind}|${n.relatedSessionId ?? '-'}|${n.contractName ?? '-'}`
+    : `${n.kind}|msg|${n.message}`
+}
 
 /**
  * Queue a notice for a session, replacing any undelivered notice with the same

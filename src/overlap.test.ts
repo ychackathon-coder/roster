@@ -7,7 +7,32 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pathsOverlap, anyPathOverlaps, pathSetsOverlap, normalize } from './overlap.js'
+import { pathsOverlap, anyPathOverlaps, pathSetsOverlap, normalize, relativize } from './overlap.js'
+
+test('relativize reconciles absolute hook paths across machines', () => {
+  // THE BUG THIS EXISTS TO PREVENT: without relativize, Maya's and Sam's
+  // absolute paths for the same file share nothing textually, no lease ever
+  // collides, and the hub silently grants everything.
+  const maya = relativize('/Users/maya/demo/web/src/App.tsx', '/Users/maya/demo')
+  const sam = relativize('/Users/sam/work/switchboard/web/src/App.tsx', '/Users/sam/work/switchboard')
+  assert.equal(maya, 'web/src/App.tsx')
+  assert.equal(sam, 'web/src/App.tsx')
+  assert.equal(pathsOverlap(maya, sam), true, 'same file on two machines must collide')
+})
+
+test('relativize is a no-op when cwd is unknown or unrelated', () => {
+  assert.equal(relativize('/Users/maya/demo/web/App.tsx'), '/Users/maya/demo/web/App.tsx')
+  assert.equal(
+    relativize('/Users/maya/demo/web/App.tsx', '/somewhere/else'),
+    '/Users/maya/demo/web/App.tsx',
+  )
+  // Trailing slash on cwd must not leave a leading slash behind.
+  assert.equal(relativize('/Users/maya/demo/web/App.tsx', '/Users/maya/demo/'), 'web/App.tsx')
+})
+
+test('relativize leaves already-relative paths alone', () => {
+  assert.equal(relativize('web/src/App.tsx', '/Users/maya/demo'), 'web/src/App.tsx')
+})
 
 test('identical paths overlap', () => {
   assert.equal(pathsOverlap('api/routes/cart.ts', 'api/routes/cart.ts'), true)

@@ -93,6 +93,32 @@ export const pathsOverlap = (x: string, y: string): boolean => {
   return false
 }
 
+/**
+ * Convert an absolute hook path to a repo-relative one using the session's cwd.
+ *
+ * THIS IS THE LOAD-BEARING RECONCILIATION. Hooks report absolute paths that
+ * include each person's home directory, so Maya's
+ * "/Users/maya/demo/web/src/App.tsx" and Sam's "/Users/sam/work/web/src/App.tsx"
+ * are the same file with nothing textually in common. Store them raw and no two
+ * people on different machines ever collide — the hub grants every lease and the
+ * product silently does nothing.
+ *
+ * Storing repo-relative also lines leases up with the §14 task seed, the derived
+ * contract registry, and the L1 cache, all of which are repo-relative already.
+ *
+ * Falls back to the input unchanged when cwd is unknown or unrelated, leaving
+ * pathsOverlap's suffix matching as the second line of defense.
+ */
+export const relativize = (path: string, cwd?: string): string => {
+  const p = normalize(path)
+  if (!cwd) return p
+  const root = normalize(cwd)
+  if (root === '' || root === '/') return p
+  if (p === root) return p
+  if (p.startsWith(`${root}/`)) return p.slice(root.length + 1)
+  return p
+}
+
 /** Does any path in this set overlap the candidate? */
 export const anyPathOverlaps = (paths: readonly string[], candidate: string): boolean =>
   paths.some((p) => pathsOverlap(p, candidate))
