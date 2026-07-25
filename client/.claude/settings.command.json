@@ -1,5 +1,5 @@
 {
-  "$comment": "Switchboard client config — §4. Install into the DEMO repo with client/install.sh, which substitutes __HUB__ for $SB_HUB. Committed to the demo repo so every session picks it up on clone.",
+  "$comment": "Switchboard client, COMMAND-HOOK mode — portable across Claude Code versions. Install with: ./client/install.sh <repo> --mode command. Use this when the room is on mixed versions, or when any laptop predates type:\"http\" hook support. Slightly slower than http mode (one process spawn per event) but works everywhere.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,9 +8,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/register.sh",
-            "args": [],
-            "timeout": 5,
-            "statusMessage": "Joining Switchboard"
+            "timeout": 5
           }
         ]
       }
@@ -20,15 +18,13 @@
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
-            "type": "http",
-            "url": "http://__HUB__:8787/hooks/pre-edit",
-            "timeout": 3,
-            "statusMessage": "Checking scope"
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/sb-hook.sh pre-edit",
+            "timeout": 4
           },
           {
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/fallback-check.sh",
-            "args": [],
             "timeout": 2
           }
         ]
@@ -39,15 +35,13 @@
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
-            "type": "http",
-            "url": "http://__HUB__:8787/hooks/post-edit",
-            "timeout": 3
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/sb-hook.sh post-edit",
+            "timeout": 4
           },
           {
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/refresh-cache.sh",
-            "args": [],
-            "async": true,
             "timeout": 5
           }
         ]
@@ -56,9 +50,9 @@
         "matcher": "Bash",
         "hooks": [
           {
-            "type": "http",
-            "url": "http://__HUB__:8787/hooks/post-bash",
-            "timeout": 3
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/sb-hook.sh post-bash",
+            "timeout": 4
           }
         ]
       }
@@ -67,9 +61,9 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://__HUB__:8787/hooks/prompt",
-            "timeout": 3
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/sb-hook.sh prompt",
+            "timeout": 4
           }
         ]
       }
@@ -78,9 +72,9 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://__HUB__:8787/hooks/turn-end",
-            "timeout": 3
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/sb-hook.sh turn-end",
+            "timeout": 4
           }
         ]
       }
@@ -89,9 +83,9 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://__HUB__:8787/hooks/session-end",
-            "timeout": 3
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/sb-hook.sh session-end",
+            "timeout": 4
           }
         ]
       }

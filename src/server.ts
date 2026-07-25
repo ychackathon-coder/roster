@@ -1,115 +1,34 @@
 /**
- * One Node process: hook endpoints, MCP endpoint, and the board websocket (§12).
+ * Local hub entry point — one long-running Node process serving hooks, MCP, and
+ * the board WebSocket (§12).
+ *
+ * This is the preferred way to run Switchboard: in-memory state, zero store
+ * latency, a real WebSocket, and the §3 fast path comfortably inside its 50ms
+ * budget. Use the Vercel deployment (api/index.ts) when a publicly reachable hub
+ * matters more than latency.
  *
  * Bound to 0.0.0.0. §12 calls cross-machine networking the #1 failure mode, and
  * the specific way it fails is a hub bound to localhost — which works perfectly
- * for whoever is hosting and is invisible to everyone else in the room. The LAN
- * addresses are printed on boot so Phase 0 has nothing to look up.
+ * for whoever is hosting and is invisible to everyone else in the room.
  */
 import { createServer } from 'node:http'
 import { networkInterfaces } from 'node:os'
-import express from 'express'
+import { createApp, bootstrap, maybeSweep } from './app.js'
 import { attachBoard } from './board.js'
 import { config, hasModel } from './config.js'
-import { loadContracts } from './contracts.js'
-import { hooksRouter } from './hooks.js'
-import { sweep } from './leases.js'
-import { handleMcpRequest, rejectMcpMethod } from './mcp.js'
-import { resetRuntime, seedTasks } from './seed.js'
-import { notifyWaiters, parseProfile, scheduleSlow } from './slow.js'
-import { mutate, read } from './state.js'
+import { store } from './store.js'
 
-const app = express()
-
-// Hook payloads are small; the generous limit is for tool_response bodies on
-// PostToolUse, which can carry a lot of stdout.
-app.use(express.json({ limit: '2mb' }))
-
-// No auth (§12). Permissive CORS so the board can be served from Vite on
-// another port, or another machine, without a proxy.
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id, mcp-protocol-version')
-  res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id')
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(204)
-    return
-  }
-  next()
-})
-
-app.use(hooksRouter())
-
-/* ---------------------------------- MCP ----------------------------------- */
-
-app.post('/mcp', (req, res) => void handleMcpRequest(req, res))
-app.get('/mcp', rejectMcpMethod)
-app.delete('/mcp', rejectMcpMethod)
-
-/* ------------------------------- onboarding -------------------------------- */
-
-/**
- * §10 context pack. Deliberately a separate route with a separate owner, and the
- * acceptance test is that deleting it leaves the demo working — every profile
- * lookup falls back to a default.
- */
-app.post('/onboard', (req, res) => {
-  const { humanId, rawContext } = req.body as { humanId?: string; rawContext?: string }
-  if (!humanId || !rawContext) {
-    res.status(400).json({ error: 'humanId and rawContext are required' })
-    return
-  }
-  // Parsing is a model call, so it must not block the response.
-  scheduleSlow('profile', () => parseProfile(humanId, rawContext))
-  res.status(202).json({ accepted: true, humanId })
-})
-
-app.post('/repo-context', (req, res) => {
-  const { text } = req.body as { text?: string }
-  mutate('repo-context', (s) => {
-    s.repoContext = (text ?? '').slice(0, 8000)
-  })
-  res.status(200).json({ ok: true })
-})
-
-/* --------------------------------- board ---------------------------------- */
-
-/** Board bootstrap for a fresh page load, before the websocket attaches. */
-app.get('/state', (_req, res) => {
-  res.status(200).json(read())
-})
-
-/** §15 risk 11: a 20-second reseed after a hub restart. */
-app.post('/admin/reset', (_req, res) => {
-  resetRuntime()
-  seedTasks()
-  res.status(200).json({ ok: true, rev: read().rev })
-})
-
-/* --------------------------------- boot ----------------------------------- */
-
+const app = createApp()
 const server = createServer(app)
 attachBoard(server)
+bootstrap()
 
-seedTasks()
-
-const repoRoot = process.env.SB_REPO_ROOT ?? process.cwd()
-try {
-  // Inside mutate() so rev bumps once and the board receives the contracts.
-  const count = mutate('contracts-loaded', (s) => loadContracts(s, repoRoot))
-  console.log(`[hub] derived ${count} contracts from ${repoRoot}`)
-} catch (err) {
-  console.warn('[hub] contract derivation failed, continuing without:', (err as Error).message)
-}
-
-/** TTL expiry and stale-session detection. Never in the write path. */
-setInterval(() => {
-  const { woken, expired, gone } = mutate('sweep', (s) => sweep(s))
-  if (expired || gone.length) {
-    console.log(`[sweep] expired=${expired} gone=${gone.length}`)
-  }
-  if (woken.length) notifyWaiters(woken, ['a previously held path'])
-}, config.sweepIntervalMs).unref()
+/**
+ * A real timer, since this process actually persists. The lazy per-request sweep
+ * in app.ts still runs; this just means leases expire on schedule even when the
+ * room goes quiet, which matters for the §13 Phase 4 TTL demonstration.
+ */
+setInterval(maybeSweep, config.sweepIntervalMs).unref()
 
 const lanAddresses = (): string[] => {
   const out: string[] = []
@@ -123,9 +42,13 @@ const lanAddresses = (): string[] => {
 
 server.listen(config.port, config.host, () => {
   const addrs = lanAddresses()
+  const host = addrs[0] ?? 'localhost'
   console.log('')
   console.log(`  Switchboard hub listening on ${config.host}:${config.port}`)
-  console.log(`  model: ${hasModel() ? config.model : 'ABSENT — deterministic mode (fast path + contract drift only)'}`)
+  console.log(`  store: ${store.kind}`)
+  console.log(
+    `  model: ${hasModel() ? config.model : 'ABSENT — deterministic mode (fast path + contract drift only)'}`,
+  )
   console.log('')
   if (addrs.length) {
     console.log('  Share this with the room (§13 Phase 0):')
@@ -135,15 +58,15 @@ server.listen(config.port, config.host, () => {
   } else {
     console.log('  No LAN address found — on a hotspot? Check the network before Phase 1.')
   }
-  console.log(`  Board websocket:  ws://${addrs[0] ?? 'localhost'}:${config.port}/board`)
-  console.log(`  MCP endpoint:     http://${addrs[0] ?? 'localhost'}:${config.port}/mcp`)
+  console.log(`  Board websocket:  ws://${host}:${config.port}/board`)
+  console.log(`  Board SSE:        http://${host}:${config.port}/board/sse`)
+  console.log(`  MCP endpoint:     http://${host}:${config.port}/mcp`)
   console.log('')
 })
 
 const shutdown = (signal: string): void => {
   console.log(`\n[hub] ${signal} — shutting down`)
   server.close(() => process.exit(0))
-  // Don't hang on an open websocket.
   setTimeout(() => process.exit(0), 1000).unref()
 }
 process.on('SIGINT', () => shutdown('SIGINT'))

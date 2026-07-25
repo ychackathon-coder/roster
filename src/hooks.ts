@@ -15,6 +15,7 @@
  *    register.sh as a plain POST (§4.1).
  */
 import { Router, type Request, type Response } from 'express'
+import { contextResponse, formatVersion, preToolUseResponse, versionsDiverge } from './compat.js'
 import { config } from './config.js'
 import {
   evaluateEdit,
@@ -73,6 +74,7 @@ type HookBody = {
   // From register.sh, which POSTs these directly.
   machine?: string
   human?: string
+  claude_version?: string
 }
 
 const sessionIdOf = (b: HookBody): string => (typeof b.session_id === 'string' ? b.session_id : '')
@@ -142,9 +144,27 @@ export const hooksRouter = (): Router => {
       session.lastSeen = Date.now()
       session.machine = machine
       session.humanName = humanName
+      session.claudeVersion = formatVersion(body.claude_version)
       s.sessions[sid] = session
 
-      if (!existing) logActivity(s, `${humanName} joined from ${machine}`, 'info', sid)
+      // Mixed versions are allowed. Surfaced as an observation on the board
+      // rather than the Phase 0 gate §4 asked for, so nobody is blocked for
+      // being a build behind.
+      const versions = Object.values(s.sessions)
+        .filter((x) => x.status !== 'gone' && x.claudeVersion)
+        .map((x) => x.claudeVersion!)
+      s.hubHealth.versionSpread = versionsDiverge(versions)
+        ? [...new Set(versions)].sort().join(', ')
+        : undefined
+
+      if (!existing) {
+        logActivity(
+          s,
+          `${humanName} joined from ${machine} (claude ${session.claudeVersion})`,
+          'info',
+          sid,
+        )
+      }
 
       return sessionStartContext({
         humanName,
@@ -186,13 +206,12 @@ export const hooksRouter = (): Router => {
       const additionalContext = contextFor(sid)
 
       if (decision.kind === 'allow') {
-        res.status(200).json({
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'allow',
+        res.status(200).json(
+          preToolUseResponse({
+            decision: 'allow',
             ...(additionalContext ? { additionalContext } : {}),
-          },
-        })
+          }),
+        )
 
         // Slow path: a newly created lease may have changed a contract.
         if (decision.created && decision.leaseId) {
@@ -203,14 +222,13 @@ export const hooksRouter = (): Router => {
       }
 
       const wire = decision.kind === 'defer' ? DEFER_WIRE_DECISION : 'deny'
-      res.status(200).json({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: wire,
-          permissionDecisionReason: decision.reason,
+      res.status(200).json(
+        preToolUseResponse({
+          decision: wire,
+          reason: decision.reason,
           ...(additionalContext ? { additionalContext } : {}),
-        },
-      })
+        }),
+      )
 
       // Record the refusal for the board's flash zone, then adjudicate async.
       mutate('queue-denial-notice', (s) => {
@@ -266,7 +284,7 @@ export const hooksRouter = (): Router => {
           if (own) own.editCount += 1
         })
       }
-      res.status(200).json({ additionalContext: contextFor(sid) })
+      res.status(200).json(contextResponse('PostToolUse', contextFor(sid)))
       maybeCompact(sid)
     } catch (err) {
       console.error('[post-edit] failed open:', err)
@@ -316,7 +334,7 @@ export const hooksRouter = (): Router => {
           }
         })
       }
-      res.status(200).json({ additionalContext: contextFor(sid) })
+      res.status(200).json(contextResponse('PostToolUse', contextFor(sid)))
     } catch (err) {
       console.error('[post-bash] failed open:', err)
       res.status(200).json({})
@@ -350,7 +368,7 @@ export const hooksRouter = (): Router => {
           logActivity(s, `${session.humanName}: "${session.lastPrompt.slice(0, 80)}"`, 'info', sid)
         })
       }
-      res.status(200).json({ additionalContext: contextFor(sid) })
+      res.status(200).json(contextResponse('UserPromptSubmit', contextFor(sid)))
       maybeCompact(sid)
     } catch (err) {
       console.error('[prompt] failed open:', err)
@@ -374,7 +392,7 @@ export const hooksRouter = (): Router => {
           }
         })
       }
-      res.status(200).json({ additionalContext: contextFor(sid) })
+      res.status(200).json(contextResponse('Stop', contextFor(sid)))
       scheduleSlow('semantic', runSemanticConflictPass)
     } catch (err) {
       console.error('[turn-end] failed open:', err)

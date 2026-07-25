@@ -8,3 +8,7 @@ switchboard.jsonl
 .claude/.switchboard-cache.json
 
 .DS_Store
+
+# Vercel
+.vercel/
+.npm-cache/

@@ -31,6 +31,17 @@ export type Session = {
   lastPrompt: string
   currentTaskId: string | null
   color: string
+
+  /**
+   * ADDITION BEYOND §7 — optional, so nothing written against the frozen model
+   * breaks by ignoring it.
+   *
+   * §4 required an identical Claude Code version on all four laptops and gated it
+   * in Phase 0. Recording the version per session replaces that hard gate with an
+   * observation: mixed versions are allowed, the board can show a badge, and if
+   * one session behaves oddly the version spread is already on screen.
+   */
+  claudeVersion?: string
 }
 
 export type Task = {
@@ -86,5 +97,19 @@ export type HubState = {
   repoContext: string
   activity: { at: number; text: string; sessionId?: string; severity: string }[]
   buildStatus: 'unknown' | 'passing' | 'failing'
-  hubHealth: { lastAdjudicationMs: number; degradedSessions: string[] }
+  hubHealth: {
+    lastAdjudicationMs: number
+    degradedSessions: string[]
+
+    /**
+     * ADDITION BEYOND §7 — optional.
+     *
+     * Set when active sessions report different Claude Code versions, e.g.
+     * "2.1.191, 2.1.220". Mixed versions are supported, so this is an
+     * observation for the board's badge, never a block. Kept separate from
+     * degradedSessions so that field keeps its single meaning: sessions running
+     * on the §5 L1 cache.
+     */
+    versionSpread?: string
+  }
 }

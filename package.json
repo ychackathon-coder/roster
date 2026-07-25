@@ -11,7 +11,11 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "test": "tsx --test src/**/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "derive-contracts": "tsx src/derive-contracts.ts",
+    "verify": "./verify.sh",
+    "verify:l1": "./l1-verify.sh",
+    "vercel-build": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",

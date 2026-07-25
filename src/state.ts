@@ -79,6 +79,33 @@ export const logActivity = (
   if (s.activity.length > 200) s.activity.length = 200
 }
 
+/**
+ * Overwrite the singleton from an external snapshot — the hydrate half of
+ * load-modify-save on serverless.
+ *
+ * Mutates the existing object in place rather than rebinding, so every module
+ * holding a reference from read() sees the new data. Does NOT notify subscribers:
+ * hydration is not a state change anyone made, and broadcasting it would make the
+ * board flash on every incoming request.
+ */
+export const replaceState = (next: HubState): void => {
+  state.rev = next.rev ?? 0
+  state.repo = next.repo ?? state.repo
+  state.sessions = next.sessions ?? {}
+  state.leases = next.leases ?? {}
+  state.tasks = next.tasks ?? {}
+  state.contracts = next.contracts ?? {}
+  state.notices = next.notices ?? []
+  state.profiles = next.profiles ?? {}
+  state.repoContext = next.repoContext ?? ''
+  state.activity = next.activity ?? []
+  state.buildStatus = next.buildStatus ?? 'unknown'
+  state.hubHealth = next.hubHealth ?? { lastAdjudicationMs: 0, degradedSessions: [] }
+}
+
+/** Plain snapshot for persistence. */
+export const snapshot = (): HubState => state
+
 /** Test seam — resets to a clean slate without reloading the module. */
 export const __resetForTests = (): void => {
   state.rev = 0
