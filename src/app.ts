@@ -314,7 +314,8 @@ export const bootstrap = (): void => {
    */
   const explicitRoot = process.env.SB_REPO_ROOT
   const onVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true'
-  if (!explicitRoot && onVercel) {
+  const skipRequested = /^(1|true)$/i.test(process.env.SB_SKIP_DERIVE ?? '')
+  if (!explicitRoot && (onVercel || skipRequested)) {
     console.log(
       '[hub] skipping contract derivation on a deployed hub — push the registry with:\n' +
         '      npm run derive-contracts -- /path/to/demo-repo <hub-url>',

@@ -2,35 +2,40 @@
 #
 # One process, in-memory state (§12), a real WebSocket, and a real sweep timer.
 # No Redis, no locks, no SSE reconnect dance: none of the serverless compensation
-# is needed because none of the serverless constraints apply.
+# applies because none of the serverless constraints do.
 #
-# Works as-is on Render, Railway, Fly.io, or any container host.
+# Works as-is on Fly.io, Render, Railway, or any container host.
 FROM node:20-alpine
 
-# jq is not needed by the hub itself (only by the client hooks), but curl makes
-# container healthchecks trivial.
+# curl for the container healthcheck. jq is not needed here — only the client
+# hooks use it, and those run on each teammate's laptop.
 RUN apk add --no-cache curl
 
 WORKDIR /app
 
-# Dependencies first so a source edit doesn't reinstall the world.
+# Dependencies first so editing src/ doesn't reinstall the world.
+# Full install including dev deps: tsx runs the TypeScript directly, so it is a
+# genuine runtime requirement here rather than a build-time one.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --cache /tmp/.npm && npm cache clean --force
+RUN npm ci --cache /tmp/.npm && npm cache clean --force
 
-# tsx runs TypeScript directly. Keeping it in production is a deliberate
-# hackathon trade: one less build step to break at 1:50.
-RUN npm install tsx@4 --no-save --cache /tmp/.npm
-
-COPY src ./src
 COPY tsconfig.json ./
+COPY src ./src
 
-# Hosts inject PORT; config.ts reads it. HOST stays 0.0.0.0 — binding localhost
-# inside a container makes the service unreachable and looks like a crash.
+# 0.0.0.0, not localhost. Binding localhost inside a container makes the service
+# unreachable from outside it and presents exactly like a crashed process.
 ENV HOST=0.0.0.0
 ENV PORT=8787
+
+# A deployed hub cannot see the demo repo, so scanning cwd would derive contracts
+# from Switchboard's OWN source — noise on the board, and drift notices about
+# files nobody in the room is editing. Push the real registry instead:
+#   npm run derive-contracts -- /path/to/demo-repo <hub-url>
+ENV SB_SKIP_DERIVE=1
+
 EXPOSE 8787
 
-HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=15s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/health" > /dev/null || exit 1
 
 CMD ["npx", "tsx", "src/server.ts"]

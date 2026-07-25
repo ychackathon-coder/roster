@@ -95,14 +95,37 @@ in-memory state. This is the right answer if the hub must outlive the session.
 
 A `Dockerfile`, `fly.toml`, and `render.yaml` are all in the repo.
 
-### Fly.io
+### Fly.io — the configured path
+
+No domain needed, stable public URL, survives your laptop closing.
 
 ```bash
 brew install flyctl
-fly launch --no-deploy      # keep the app name in fly.toml, or update it
-fly secrets set ANTHROPIC_API_KEY=sk-...    # optional
-fly deploy
+fly auth login                        # interactive, opens a browser
+
+fly launch --no-deploy --name switchboard-hub --region sjc --copy-config
+fly secrets set ANTHROPIC_API_KEY=sk-...    # optional; deterministic mode works without
+fly deploy --remote-only              # remote builder — no local Docker required
+
+fly logs                              # watch it boot
+curl https://switchboard-hub.fly.dev/health
 ```
+
+Then from a laptop that has the demo repo:
+
+```bash
+export SB_HUB_URL=https://switchboard-hub.fly.dev
+./client/install.sh /path/to/demo-repo
+npm run derive-contracts -- /path/to/demo-repo $SB_HUB_URL
+```
+
+That last command is not optional. `SB_SKIP_DERIVE=1` is set in `fly.toml`
+because a deployed hub would otherwise scan its own source and derive contracts
+about Switchboard rather than your demo repo. Re-run it whenever the demo repo's
+exports or routes change, or drift notices go stale.
+
+If `--name switchboard-hub` is taken, pick another and update `app` in
+`fly.toml` to match.
 
 ### Render
 

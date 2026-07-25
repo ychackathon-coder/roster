@@ -1,12 +1,13 @@
 # Fly.io — a single always-on machine.
 #
-#   fly launch --no-deploy      # then edit the app name below if it changed
-#   fly secrets set ANTHROPIC_API_KEY=sk-...   # optional
-#   fly deploy
+#   fly auth login                              # you, once (opens a browser)
+#   fly launch --no-deploy --name switchboard-hub --region sjc --copy-config
+#   fly deploy --remote-only                    # no local Docker needed
 #
-# Fly is the fastest of the container hosts for this workload: the machine sits in
-# one region, WebSocket is native, and there is no cold start once min_machines is
-# 1.
+# Then, from a laptop that has the demo repo:
+#   export SB_HUB_URL=https://switchboard-hub.fly.dev
+#   ./client/install.sh /path/to/demo-repo
+#   npm run derive-contracts -- /path/to/demo-repo $SB_HUB_URL
 app = "switchboard-hub"
 primary_region = "sjc"
 
@@ -16,25 +17,32 @@ primary_region = "sjc"
 [env]
   HOST = "0.0.0.0"
   PORT = "8787"
+  # See the Dockerfile: a deployed hub cannot read the demo repo, so the contract
+  # registry is pushed with `npm run derive-contracts` instead of scanned.
+  SB_SKIP_DERIVE = "1"
+  LEASE_TTL_MS = "600000"
 
 [http_service]
   internal_port = 8787
   force_https = true
 
-  # BOTH must stay false, and min_machines_running must stay 1. Leases live in
-  # memory: a stopped machine loses every lease, and a second machine would grant
-  # the same file twice.
+  # ALL THREE OF THESE MATTER.
+  #
+  # Leases live in memory (§12). A stopped machine loses every lease in the room,
+  # and a SECOND machine would hold a second, independent lease table — granting
+  # the same file to two different people, which is precisely the failure this
+  # product exists to prevent.
+  #
+  # Scaling past one machine requires the Redis store in src/store.ts. Until then:
+  # one machine, never auto-stopped.
   auto_stop_machines = false
   auto_start_machines = false
   min_machines_running = 1
 
-  [http_service.http_options.response]
-    pretty = false
-
 [[http_service.checks]]
   interval = "15s"
   timeout = "3s"
-  grace_period = "10s"
+  grace_period = "15s"
   method = "GET"
   path = "/health"
 
