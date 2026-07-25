@@ -84,6 +84,22 @@ they differ, so the board can show a badge. Nothing is ever blocked for it.
 
 ---
 
+## Where to run it
+
+See **[HOSTING.md](./HOSTING.md)** for the full comparison. Short version:
+
+| Option | Verdict |
+| --- | --- |
+| **Laptop + Cloudflare Tunnel** | **Recommended.** Keeps every §12 property, ~8ms fast path, 2-minute setup, contract derivation still works |
+| Container host (Fly / Render / Railway) | Right choice if the hub must survive a laptop sleeping. One instance only |
+| Vercel | Works, worst fit — needs Redis, no WebSocket, 5–20× slower fast path |
+
+```bash
+brew install cloudflared
+npm start        # terminal 1
+./tunnel.sh      # terminal 2  -> public https URL
+```
+
 ## Deploy to Vercel
 
 A public URL eliminates §15's highest-likelihood risk — cross-machine networking,

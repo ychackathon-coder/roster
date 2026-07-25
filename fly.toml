@@ -1,0 +1,43 @@
+# Fly.io — a single always-on machine.
+#
+#   fly launch --no-deploy      # then edit the app name below if it changed
+#   fly secrets set ANTHROPIC_API_KEY=sk-...   # optional
+#   fly deploy
+#
+# Fly is the fastest of the container hosts for this workload: the machine sits in
+# one region, WebSocket is native, and there is no cold start once min_machines is
+# 1.
+app = "switchboard-hub"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8787"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+
+  # BOTH must stay false, and min_machines_running must stay 1. Leases live in
+  # memory: a stopped machine loses every lease, and a second machine would grant
+  # the same file twice.
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [http_service.http_options.response]
+    pretty = false
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "3s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
