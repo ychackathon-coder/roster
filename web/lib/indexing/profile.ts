@@ -79,6 +79,10 @@ function isTooGeneric(profile: TeamProfile, raw: RepoRawData): string | null {
 }
 
 function nvidiaClient(): OpenAI | null {
+  // HQ_MODEL_ENABLED=false disables every model call in the product, including
+  // profile derivation — without it, a dead provider costs onboarding two full
+  // 20s timeouts before the deterministic fallback kicks in (measured: 49s).
+  if (/^(0|false|no)$/i.test(process.env.HQ_MODEL_ENABLED ?? "")) return null;
   const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) return null;
   return new OpenAI({
