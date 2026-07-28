@@ -1,26 +1,10 @@
 node_modules/
+.next/
 .env
 .env.local
 *.log
-
-# Hub run artifacts
-switchboard.jsonl
-.claude/.switchboard-cache.json
-
 .DS_Store
-
-# Vercel
-.vercel/
 .npm-cache/
-
-# Person D Roster Next.js app
-roster/.env
-roster/.env.local
-roster/node_modules/
-roster/.next/
-roster/out/
-roster/data/events.json
-roster/data/active-profile.json
-
-roster/tsconfig.tsbuildinfo
-roster/.next/
+.vercel
+tsconfig.tsbuildinfo
+next-env.d.ts

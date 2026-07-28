@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ported from orchestra/app/globals.css. Tailwind 4's `@theme` tokens became
+   plain custom properties scoped to `.mkt` (the marketing layout wrapper), and
+   the token-backed color utilities are declared by hand in the utilities layer
+   below, since this app's tailwind.config.js does not know about them. */
+
+@layer utilities {
+  .bg-canvas {
+    background-color: var(--canvas);
+  }
+  .text-canvas {
+    color: var(--canvas);
+  }
+  .text-fg {
+    color: var(--fg);
+  }
+  .text-fg-dim {
+    color: var(--fg-dim);
+  }
+  .text-accent {
+    color: var(--accent);
+  }
+  .text-grid-lo {
+    color: var(--grid-lo);
+  }
+  .text-grid-hi {
+    color: var(--grid-hi);
+  }
+  .border-hairline {
+    border-color: var(--hairline);
+  }
+}
+
+.mkt {
+  --canvas: #0a0a0a;
+  --fg: #ededed;
+  --fg-dim: #8a8a8a;
+  --grid-lo: #2a2a2a;
+  --grid-hi: #8a8a8a;
+  --accent: #3d7cff;
+  --accent-deep: #0b2a6b;
+  --panel: rgba(20, 20, 20, 0.72);
+  --hairline: rgba(255, 255, 255, 0.08);
+
+  min-height: 100svh;
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-roboto-serif), Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scoped through :has so the dark ground never leaks into the (app) group. */
+html:has(.mkt) {
+  background: #0a0a0a;
+}
+
+body:has(.mkt) {
+  margin: 0;
+  background: #0a0a0a;
+  overflow-x: hidden;
+}
+
+/* Lenis wants the native scrollbar to stay in charge of the document. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.mkt ::selection {
+  background: var(--accent);
+  color: #0a0a0a;
+}
+
+.mkt :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Geist Mono carries every mono surface; the stock font-mono stack does not. */
+.mkt .font-mono {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* --- type scale --------------------------------------------------------- */
+
+.mkt .display {
+  /* Roboto Serif carries the display voice; serifs collapse under the old
+     ultra-tight tracking, so the scale loosens with the font swap. */
+  font-family: var(--font-roboto-serif), Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.mkt .display-xl {
+  font-size: clamp(3rem, 8.5vw, 8.25rem);
+  letter-spacing: -0.03em;
+}
+
+/* Tall hero cut: condensed width axis plus a strong vertical stretch, so the
+   serif reads like a tall, stretched editorial headline without a second font
+   file. */
+.mkt .display-tall {
+  font-variation-settings: "wdth" 74;
+  transform: scaleY(1.4);
+  transform-origin: 50% 100%;
+}
+
+.mkt .display-lg {
+  font-size: clamp(2.25rem, 6vw, 5.5rem);
+}
+
+.mkt .display-md {
+  font-size: clamp(1.75rem, 3.6vw, 3.25rem);
+  letter-spacing: -0.025em;
+}
+
+.mkt .mono-label {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.mkt .mono-sm {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  letter-spacing: 0.02em;
+}
+
+.mkt .panel {
+  background: var(--panel);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--hairline);
+}
+
+.mkt .hairline-t {
+  border-top: 1px solid var(--hairline);
+}
+
+/* Caret used in the hero pill and terminal. */
+@keyframes caret-blink {
+  0%,
+  48% {
+    opacity: 1;
+  }
+  52%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.mkt .caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  background: var(--accent);
+  vertical-align: -0.16em;
+  animation: caret-blink 1.05s steps(1) infinite;
+}
+
+.mkt input.scan-input::placeholder {
+  color: transparent;
+}
+
+/* The pill itself carries the focus treatment; the browser's outline on the
+   inner input reads as a broken red box, so it stays off. */
+.mkt input.scan-input:focus,
+.mkt input.scan-input:focus-visible {
+  outline: none;
+}
+
+/* Resting heartbeat: the pill glows up and down until it is focused. */
+@keyframes pill-heartbeat {
+  0%,
+  100% {
+    border-color: rgba(61, 124, 255, 0.12);
+    box-shadow: 0 0 0 1px rgba(61, 124, 255, 0.06), 0 0 28px -14px rgba(61, 124, 255, 0.3);
+  }
+  50% {
+    border-color: rgba(61, 124, 255, 0.42);
+    box-shadow: 0 0 0 1px rgba(61, 124, 255, 0.22), 0 14px 64px -22px rgba(61, 124, 255, 0.75);
+  }
+}
+
+.mkt .pill-breathe {
+  animation: pill-heartbeat 2.6s ease-in-out infinite;
+}
+
+/* --- reduced motion ----------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .mkt *,
+  .mkt *::before,
+  .mkt *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .mkt .caret {
+    animation: none;
+    opacity: 1;
+  }
+}

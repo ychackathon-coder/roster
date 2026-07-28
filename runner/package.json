@@ -1,0 +1,19 @@
+{
+  "name": "roster-runner",
+  "version": "1.0.0",
+  "description": "Local agent runner for Roster — executes tasks with real Claude Code sessions in repos you point it at.",
+  "type": "module",
+  "bin": { "roster-runner": "./src/index.ts" },
+  "scripts": {
+    "start": "tsx src/index.ts start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tsx": "^4.20.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2"
+  },
+  "engines": { "node": ">=20" }
+}
