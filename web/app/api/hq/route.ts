@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOrg } from "@/lib/auth";
 import { activeProfile, createTask, insertEvent, recentEvents } from "@/lib/db";
 import { buildAgentPrompt, decideHq } from "@/lib/hq/engine";
+import { enforceLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -15,6 +16,9 @@ export async function POST(req: Request) {
   const auth = await requireOrg();
   if ("error" in auth) return auth.error;
   const org = auth.ctx.org;
+
+  const limited = await enforceLimit("hq", org.id);
+  if (limited) return limited;
 
   const body = (await req.json().catch(() => ({}))) as { request?: string; team?: string };
   const request = body.request?.trim();

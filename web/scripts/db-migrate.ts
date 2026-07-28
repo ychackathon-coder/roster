@@ -28,9 +28,21 @@ async function main() {
   const client = clientFromEnv();
   await client.connect();
   try {
+    // Bookkeeping table first, so we can skip already-applied files.
+    await client.query(
+      `create table if not exists public.schema_migrations (
+         filename text primary key, applied_at timestamptz not null default now())`,
+    );
+    const { rows } = await client.query(`select filename from schema_migrations`);
+    const applied = new Set(rows.map((r: { filename: string }) => r.filename));
     for (const file of files) {
+      if (applied.has(file)) {
+        console.log(`skip    ${file} (already applied)`);
+        continue;
+      }
       const sql = readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
       await client.query(sql);
+      await client.query(`insert into schema_migrations (filename) values ($1) on conflict do nothing`, [file]);
       console.log(`applied ${file}`);
     }
     await client.query(`notify pgrst, 'reload schema'`);

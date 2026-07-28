@@ -152,6 +152,13 @@ async function runTask(cfg: Config, task: NonNullable<NextTask["task"]>): Promis
     env: process.env,
   });
 
+  // Liveness while executing: without this, a long Claude run with no tool
+  // events for 90s would look like a dead runner and the hub would requeue the
+  // task out from under us.
+  const heartbeat = setInterval(() => {
+    void hub(cfg, "POST", `/api/runner/heartbeat`, { task_id: task.id });
+  }, 20_000);
+
   const killTimer = setTimeout(() => {
     console.log(red(`task exceeded ${cfg.taskTimeoutMinutes}m — killing session`));
     child.kill("SIGKILL");
@@ -208,6 +215,7 @@ async function runTask(cfg: Config, task: NonNullable<NextTask["task"]>): Promis
 
   const exitCode: number = await new Promise((resolve) => child.on("close", (c) => resolve(c ?? 1)));
   clearTimeout(killTimer);
+  clearInterval(heartbeat);
 
   const ok = exitCode === 0;
   const summary = ok

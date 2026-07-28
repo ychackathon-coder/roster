@@ -3,16 +3,20 @@
   "version": "1.0.0",
   "description": "Local agent runner for Roster — executes tasks with real Claude Code sessions in repos you point it at.",
   "type": "module",
-  "bin": { "roster-runner": "./src/index.ts" },
+  "bin": { "roster-runner": "./dist/roster-runner.mjs" },
+  "files": ["dist"],
   "scripts": {
     "start": "tsx src/index.ts start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build"
   },
   "dependencies": {
     "tsx": "^4.20.7"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "esbuild": "^0.25.0",
     "typescript": "^5.7.2"
   },
   "engines": { "node": ">=20" }

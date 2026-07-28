@@ -17,6 +17,7 @@ import {
   type ReactNode,
 } from "react";
 import type { StateSnapshot } from "./contracts";
+import { supabaseBrowser } from "./supabase/browser";
 
 const EMPTY: StateSnapshot = {
   org: null,
@@ -61,6 +62,12 @@ export function LiveProvider({ children, pollMs = 3000 }: { children: ReactNode;
     inFlight.current = true;
     try {
       const res = await fetch("/api/state", { cache: "no-store" });
+      if (res.status === 401) {
+        // Session expired while the dashboard sat open — re-authenticate
+        // rather than polling 401s forever behind a stale screen.
+        window.location.assign("/login?next=/dashboard");
+        return;
+      }
       if (!res.ok) throw new Error(String(res.status));
       const next = (await res.json()) as StateSnapshot;
       if (alive.current) {
@@ -77,6 +84,16 @@ export function LiveProvider({ children, pollMs = 3000 }: { children: ReactNode;
 
   useEffect(() => {
     alive.current = true;
+
+    // Supabase access tokens expire hourly. Only pages that instantiate a
+    // browser client get auto-refresh (it rewrites the auth cookie), and the
+    // dashboard previously never did — so a dashboard left open for an hour
+    // started 401ing until a manual reload. getSession() starts the refresh
+    // timer; the subscription keeps it alive for the life of the provider.
+    const supabase = supabaseBrowser();
+    void supabase.auth.getSession();
+    const { data: authSub } = supabase.auth.onAuthStateChange(() => {});
+
     void refresh();
     const timer = setInterval(() => void refresh(), pollMs);
     const onVisible = () => {
@@ -87,6 +104,7 @@ export function LiveProvider({ children, pollMs = 3000 }: { children: ReactNode;
       alive.current = false;
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
+      authSub.subscription.unsubscribe();
     };
   }, [refresh, pollMs]);
 

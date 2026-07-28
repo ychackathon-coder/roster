@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/auth";
 import { activeProfile, orgRunners, orgTasks, recentEvents } from "@/lib/db";
 import { buildSnapshot } from "@/lib/mapping";
+import { sweepStuckTasks } from "@/lib/sweep";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,12 @@ export async function GET() {
       metrics: { activeAgents: 0, tasksCompleted: 0, interventionRate: 0, pendingApprovals: 0, runnersOnline: 0 },
     });
   }
+
+  // Self-healing: any open dashboard recovers its own org's stuck tasks, so
+  // recovery works even where scheduled crons don't (Vercel Hobby = daily).
+  await sweepStuckTasks(ctx.org.id).catch((err) =>
+    console.warn(`[state] sweep failed: ${(err as Error).message}`),
+  );
 
   const [profile, events, tasks, runners] = await Promise.all([
     activeProfile(ctx.org.id),

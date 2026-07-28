@@ -2688,6 +2688,74 @@ select:focus-visible {
   box-shadow: none !important;
 }
 
+/* Queued work with zero runners online: amber glass so it reads as a warning
+   about execution, not an error in the data. */
+.runner-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-radius: 24px;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.16) 55%, rgba(255, 255, 255, 0.38) 100%),
+    color-mix(in srgb, #e49a2d 13%, var(--module) 42%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  padding: 13px 15px;
+  backdrop-filter: blur(12px) saturate(1.25);
+  -webkit-backdrop-filter: blur(12px) saturate(1.25);
+}
+
+.runner-warning-icon {
+  display: grid;
+  height: 28px;
+  width: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: #fff2d9;
+  color: #ad6d18;
+}
+
+.runner-warning-command {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 1px 5px;
+  color: #8a5a13;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  /* One click selects the whole command for pasting into a terminal. */
+  user-select: all;
+}
+
+.runner-warning-dismiss {
+  display: grid;
+  height: 26px;
+  width: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  border-radius: 999px;
+  color: #ad6d18;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.runner-warning-dismiss:hover {
+  background: rgba(255, 255, 255, 0.55);
+  color: #7c4e0e;
+}
+
+/* Last poll failed — the snapshot on screen may be old. Header-level, quiet. */
+.stale-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  background: rgba(228, 154, 45, 0.13);
+  padding: 3px 8px;
+  color: #a96815;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 [data-theme="dark"] {
   color-scheme: dark;
   --ink: #f2f0e9;
@@ -2769,6 +2837,37 @@ select:focus-visible {
 
 [data-theme="dark"] .attention-card {
   background: #30291f;
+}
+
+[data-theme="dark"] .runner-warning-banner {
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02) 60%),
+    #30291f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .runner-warning-icon {
+  background: rgba(228, 154, 45, 0.16);
+  color: #e3b264;
+}
+
+[data-theme="dark"] .runner-warning-command {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e3b264;
+}
+
+[data-theme="dark"] .runner-warning-dismiss {
+  color: #e3b264;
+}
+
+[data-theme="dark"] .runner-warning-dismiss:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f2cd8f;
+}
+
+[data-theme="dark"] .stale-indicator {
+  background: rgba(228, 154, 45, 0.14);
+  color: #e3b264;
 }
 
 [data-theme="dark"] .approval-row,

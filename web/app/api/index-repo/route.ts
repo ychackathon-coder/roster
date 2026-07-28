@@ -4,16 +4,20 @@ import { activeProfile, insertEvent, recentEvents, setActiveProfile } from "@/li
 import { decideHq } from "@/lib/hq/engine";
 import { indexRepo } from "@/lib/indexing/profile";
 import { parseRepoInput } from "@/lib/indexing/fallback-repos";
+import { enforceLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 // GitHub fetch + (possibly slow) model derivation.
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   const auth = await requireOrg();
   if ("error" in auth) return auth.error;
   const { org, display_name } = auth.ctx.org ? { org: auth.ctx.org, display_name: auth.ctx.org.display_name } : { org: null, display_name: "" };
   if (!org) return NextResponse.json({ error: "no company" }, { status: 409 });
+
+  const limited = await enforceLimit("indexRepo", org.id);
+  if (limited) return limited;
 
   const body = (await req.json().catch(() => ({}))) as { repo?: string };
   const parsed = parseRepoInput(body.repo ?? "");

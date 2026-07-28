@@ -458,7 +458,7 @@ function TopHeader({
   onOpenSidebar: () => void;
   onOpenPanel: (title: string) => void;
 }) {
-  const { metrics } = useLive();
+  const { metrics, stale } = useLive();
   const ThemeIcon =
     themeMode === "system" ? Monitor : resolvedTheme === "dark" ? Moon : Sun;
   return (
@@ -474,6 +474,15 @@ function TopHeader({
             <Menu size={17} />
           </button>
           <p className="text-[10px] font-medium text-muted">Company overview</p>
+          {stale && (
+            <span className="stale-indicator" role="status">
+              <span
+                className="h-1.5 w-1.5 animate-blink-soft rounded-full bg-amber-500"
+                aria-hidden="true"
+              />
+              reconnecting…
+            </span>
+          )}
         </div>
         <h1 className="mt-0.5 text-[24px] font-semibold tracking-[-0.045em] text-ink">
           Command Center
@@ -1607,6 +1616,49 @@ function RecommendationCard({
   );
 }
 
+/**
+ * Queued work with zero runners online is the one state where the dashboard
+ * looks alive but nothing will execute — surface it with the exact command
+ * that fixes it. Dismissal is deliberately per-mount local state: the warning
+ * must come back on the next visit if the condition still holds.
+ */
+function RunnerOfflineBanner() {
+  const { ready, metrics } = useLive();
+  const [dismissed, setDismissed] = useState(false);
+  if (!ready || dismissed || metrics.pendingApprovals === 0 || metrics.runnersOnline > 0) {
+    return null;
+  }
+  const queued = metrics.pendingApprovals;
+  return (
+    <section className="runner-warning-banner col-span-12" role="status">
+      <span className="runner-warning-icon" aria-hidden="true">
+        <CircleAlert size={14} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold text-ink">
+          {queued} task{queued === 1 ? "" : "s"} queued — no runner is online to execute them.
+        </p>
+        <p className="mt-1 text-[9px] leading-[1.6] text-muted">
+          Start one:{" "}
+          <code className="runner-warning-command">
+            {/* Only rendered after the first client-side poll, so window exists. */}
+            npx roster-runner start --hub {window.location.origin} --token rt_…
+          </code>{" "}
+          (mint a token via POST /api/runners)
+        </p>
+      </div>
+      <button
+        type="button"
+        className="runner-warning-dismiss"
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss runner warning"
+      >
+        <X size={13} />
+      </button>
+    </section>
+  );
+}
+
 function AgentWorkspace({
   agent,
   onBack,
@@ -2339,6 +2391,7 @@ export function Dashboard() {
           />
           <div className="dashboard-scroll">
             <div className="bento-grid">
+              <RunnerOfflineBanner />
               <CompanyStatusCard
                 onOpen={openCompanyMap}
                 onSelectAgent={openCompanyAgent}

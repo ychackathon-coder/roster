@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOrg } from "@/lib/auth";
 import { createRunner, orgRunners } from "@/lib/db";
+import { enforceLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requireOrg();
   if ("error" in auth) return auth.error;
+
+  const limited = await enforceLimit("runnerMint", auth.ctx.org.id);
+  if (limited) return limited;
 
   const body = (await req.json().catch(() => ({}))) as { name?: string };
   const name = (body.name ?? "runner").trim().slice(0, 60) || "runner";

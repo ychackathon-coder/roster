@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/auth";
 import { joinOrg } from "@/lib/db";
+import { enforceLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,9 @@ export async function POST(req: Request) {
       { status: 409 },
     );
   }
+
+  const limited = await enforceLimit("orgJoin", ctx.userId);
+  if (limited) return limited;
 
   const body = (await req.json().catch(() => ({}))) as { code?: string; display_name?: string };
   const code = body.code?.trim();
